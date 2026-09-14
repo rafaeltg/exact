@@ -83,10 +83,7 @@ When a unit matches a row above, **helpers first, orchestrator last**. Writing t
 Work is not done until every gate passes. Run the commands. Do not eyeball.
 
 ```bash
-uv run ruff check
-uv run ruff format --check
-python3 .cursor/hooks/complexity-guard.py --check
-uv run pytest -q
+make check
 ```
 
 Required:

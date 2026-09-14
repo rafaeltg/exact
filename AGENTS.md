@@ -5,17 +5,18 @@ CLI Open Deep Research agent on LangGraph. Tools are **Exa** and **Elicit** only
 ## Commands
 
 ```
-uv sync --extra dev
-uv run pytest -q
-uv run ruff check --fix
-uv run ruff format
-python3 .cursor/hooks/complexity-guard.py --check
-uv run pre-commit install
+make setup              # uv sync --extra dev + install-hooks
+make test               # TEST=path K=expr VERBOSE=1
+make lint / lint-fix
+make format / format-fix   # FILE=path for one file
+make complexity-check
+make check              # lint + format-check + complexity + tests
+make clean
 ```
 
-Install hooks once after clone. Commits then run Ruff lint (with fixes), format, and the complexity gate. Do not skip hooks.
+Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage) and `make complexity-check`. Do not skip hooks.
 
-Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` run `.cursor/hooks/complexity-guard.py --pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `.cursor/hooks/ruff-after-edit.py` (lint-fix + format). `TabWrite` still gets a post-edit complexity advisory via `postToolUse`.
+Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` hit `make complexity-pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. `TabWrite` gets `make complexity-post` via `postToolUse`.
 
 ## Bounds (do not loosen)
 
@@ -45,7 +46,7 @@ If you change topology, bounds, tools, or citation rules, update `docs/spec.md` 
 
 ## Complexity budgets
 
-`.cursor/hooks/complexity-guard.py` owns the numbers. Do not restate them here. Tests, `alembic/`, and `scripts/dev/` are exempt. `preToolUse --pre` denies a new or worse breach vs HEAD before the write lands. Ruff stays post-edit. Commits run `--check`. The tree must have no over-budget functions. Do not park a breach.
+`.cursor/hooks/complexity-guard.py` owns the numbers. Do not restate them here. Tests, `alembic/`, and `scripts/dev/` are exempt. `make complexity-pre` denies a new or worse breach vs HEAD before the write lands. Ruff stays post-edit (`make lint-fix FILE=`). Commits run `make complexity-check`. The tree must have no over-budget functions. Do not park a breach.
 
 Repair an over-budget function in this order. Stop at the first repair that works.
 
@@ -57,12 +58,12 @@ Repair an over-budget function in this order. Stop at the first repair that work
 Do not add a boolean parameter to merge two behaviours. Do not pass a bag of state to beat the parameter budget. Do not split a function into two halves that share most of their locals.
 
 ```
-python3 .cursor/hooks/complexity-guard.py --check
+make complexity-check
 ```
 
 ## Done when
 
-`uv run ruff check`, `uv run ruff format --check`, `python3 .cursor/hooks/complexity-guard.py --check`, and `uv run pytest -q` are clean.
+`make check` is clean (lint + format-check + complexity + tests).
 
 ## MANDATORY rules
 

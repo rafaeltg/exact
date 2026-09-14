@@ -17,26 +17,25 @@ Prerequisites:
 # 1. Clone
 git clone <repo-url> exact && cd exact
 
-# 2. Install package + dev extras (pytest, ruff, pre-commit)
-uv sync --extra dev
+# 2. Sync deps + install pre-commit hooks (ruff + complexity gate)
+make setup
 
-# 3. Install the pre-commit hook (once per clone)
-uv run pre-commit install
-
-# 4. Env file (live CLI only; pytest must not hit the network)
+# 3. Env file (live CLI only; pytest must not hit the network)
 cp .env.example .env
 # set EXA_API_KEY and ANTHROPIC_API_KEY (or OPENAI_API_KEY)
 # optional: ELICIT_API_KEY for academic paper search
 # set EXACT_GITHUB_USER for /commit and /create-pr (gh auth switch)
 
-# 5. Run the test suite
-uv run pytest -q
+# 4. Run the gate (lint + format-check + complexity + tests)
+make check
 ```
 
+Raw equivalents: `uv sync --extra dev`, `uv run pytest -q`. See `make help`.
+
 Editor: install the Ruff extension. `.vscode/settings.json` turns on format
-and lint-fix on save. Agent `Write`/`StrReplace` hit
-`.cursor/hooks/complexity-guard.py --pre` before disk; after an allowed
-write, `afterFileEdit` runs `.cursor/hooks/ruff-after-edit.py`.
+and lint-fix on save. Agent `Write`/`StrReplace` hit `make complexity-pre`
+before disk; after an allowed write, `afterFileEdit` runs
+`scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`.
 
 ## 2. Tests
 
@@ -45,6 +44,7 @@ call Exa, Elicit, or any LLM provider from pytest.
 
 | Command            | Requires                         | Time    |
 |--------------------|----------------------------------|---------|
+| `make test`        | `make setup`                     | seconds |
 | `uv run pytest -q` | `uv sync --extra dev`            | seconds |
 
 ### Writing a new test
@@ -64,13 +64,13 @@ Authoritative test rules live in the test-design skill under
 
 ## 3. Pre-commit hook
 
-`uv run pre-commit install` registers the hooks in
-`.pre-commit-config.yaml`. Every commit runs:
+`make install-hooks` (also part of `make setup`) symlinks
+`scripts/hooks/pre-commit` into `.git/hooks/pre-commit`. Every commit runs:
 
-1. **`ruff-check --fix`** — lint with auto-fix, then re-stage.
-2. **`ruff-format`** — format staged Python.
-3. **`complexity-check`** — `python3 .cursor/hooks/complexity-guard.py --check`
-   over the git index. Fails if any tracked function is over budget.
+1. **`make lint-fix`** — ruff format + safe lint fixes, then re-stage
+   cleanly-staged files that the fixers changed (partial staging is left
+   alone and warned).
+2. **`make complexity-check`** — fail if any tracked function is over budget.
 
 Do not skip hooks. `git commit --no-verify` is for emergencies only.
 
@@ -79,10 +79,12 @@ Do not skip hooks. `git commit --no-verify` is for emergencies only.
 `.cursor/hooks/complexity-guard.py` owns the budgets. Do not restate the
 numbers here. Tests, `alembic/`, and `scripts/dev/` are exempt.
 
-- Edit-time `preToolUse --pre`: denies a **new or worse** breach vs HEAD
-  before the write. Ruff lint/format remain post-edit.
-- Commit / merge gate: `--check` fails if any tracked function is over
-  budget. The tree must have no over-budget functions. Do not park a breach.
+- Edit-time `make complexity-pre`: denies a **new or worse** breach vs HEAD
+  before the write. Ruff lint/format remain post-edit via
+  `make lint-fix FILE=…`.
+- Commit / merge gate: `make complexity-check` fails if any tracked function
+  is over budget. The tree must have no over-budget functions. Do not park
+  a breach.
 
 Repair order (stop at the first repair that works):
 
@@ -96,7 +98,7 @@ of state to beat the parameter budget. Do not split a function into two
 halves that share most of their locals.
 
 ```bash
-python3 .cursor/hooks/complexity-guard.py --check
+make complexity-check
 ```
 
 ## 5. CI pipeline (not defined yet)
@@ -152,10 +154,7 @@ Graph invariants (see also `AGENTS.md`):
 A change is done when all of these are clean:
 
 ```bash
-uv run ruff check
-uv run ruff format --check
-python3 .cursor/hooks/complexity-guard.py --check
-uv run pytest -q
+make check
 ```
 
 ## 8. Releasing (out of scope for this pass)

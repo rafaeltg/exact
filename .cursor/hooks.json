@@ -3,7 +3,7 @@
   "hooks": {
     "preToolUse": [
       {
-        "command": "python3 .cursor/hooks/complexity-guard.py --pre",
+        "command": "make complexity-pre",
         "matcher": "Write|StrReplace",
         "failClosed": true,
         "timeout": 15
@@ -11,13 +11,13 @@
     ],
     "afterFileEdit": [
       {
-        "command": ".cursor/hooks/ruff-after-edit.py",
+        "command": "scripts/hooks/post-edit.sh",
         "timeout": 20
       }
     ],
     "postToolUse": [
       {
-        "command": "python3 .cursor/hooks/complexity-guard.py",
+        "command": "make complexity-post",
         "matcher": "TabWrite",
         "timeout": 15
       }

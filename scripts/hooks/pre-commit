@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# pre-commit — lint-fix via make, re-stage clean fixes, complexity gate.
+#
+# Install: make install-hooks
+# Skip once: git commit --no-verify
+#
+# Portability: bash 3.2 (macOS default).
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+section() { printf '\n\033[1;34m[pre-commit]\033[0m %s\n' "$1"; }
+ok()      { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+warn()    { printf '  \033[33m!\033[0m %s\n' "$1"; }
+err()     { printf '  \033[31m✗\033[0m %s\n' "$1"; }
+
+fail=0
+
+read_lines() {
+  local __name="$1"
+  local __line __i=0
+  eval "$__name=()"
+  while IFS= read -r __line; do
+    [ -n "$__line" ] || continue
+    eval "${__name}[__i]=\"\$__line\""
+    __i=$((__i + 1))
+  done
+}
+
+staged_files() {
+  git diff --cached --name-only --diff-filter=ACMR -- "$@" 2>/dev/null
+}
+
+hash_worktree() {
+  if [ -f "$1" ]; then git hash-object -- "$1"; else echo "absent"; fi
+}
+
+hash_index() {
+  git ls-files --stage -- "$1" 2>/dev/null | awk '{print $2}'
+}
+
+get_hash() {
+  local key="$1" i=0
+  REPLY=""
+  while [ "$i" -lt "${#pre_hash_keys[@]}" ]; do
+    if [ "${pre_hash_keys[$i]}" = "$key" ]; then
+      REPLY="${pre_hash_vals[$i]}"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# ─── 1. Snapshot staged Python (fixable set) ───────────────────────────
+read_lines fixable_staged < <(staged_files ':(glob)**/*.py' ':(glob)**/*.pyi')
+
+clean_staged=()
+dirty_staged=()
+pre_hash_keys=()
+pre_hash_vals=()
+
+for f in "${fixable_staged[@]:-}"; do
+  [ -n "$f" ] || continue
+  idx_hash="$(hash_index "$f")"
+  wt_hash="$(hash_worktree "$f")"
+  pre_hash_keys+=("$f")
+  pre_hash_vals+=("$wt_hash")
+  if [ "$idx_hash" = "$wt_hash" ]; then
+    clean_staged+=("$f")
+  else
+    dirty_staged+=("$f")
+  fi
+done
+
+# ─── 2. lint-fix (whole tree — same gate as make check) ───────────────
+section "lint-fix"
+if make lint-fix; then
+  ok "lint-fix completed"
+else
+  err "lint-fix failed — see output above"
+  fail=1
+fi
+
+# ─── 3. Re-stage cleanly-staged files modified by --fix (Option B) ─────
+restaged=0
+skipped_dirty=()
+
+for f in "${clean_staged[@]:-}"; do
+  [ -n "$f" ] || continue
+  post_hash="$(hash_worktree "$f")"
+  get_hash "$f"
+  if [ "$post_hash" != "$REPLY" ]; then
+    git add -- "$f"
+    restaged=$((restaged + 1))
+  fi
+done
+
+for f in "${dirty_staged[@]:-}"; do
+  [ -n "$f" ] || continue
+  post_hash="$(hash_worktree "$f")"
+  get_hash "$f"
+  if [ "$post_hash" != "$REPLY" ]; then
+    skipped_dirty+=("$f")
+  fi
+done
+
+if [ "$restaged" -gt 0 ]; then
+  ok "re-staged ${restaged} auto-fixed file(s)"
+fi
+
+if [ "${#skipped_dirty[@]}" -gt 0 ]; then
+  warn "auto-fixed but NOT re-staged (partial staging detected):"
+  for f in "${skipped_dirty[@]}"; do
+    printf '      - %s\n' "$f"
+  done
+  warn "review with: git diff -- <file> for each path above"
+fi
+
+# ─── 4. complexity-check ───────────────────────────────────────────────
+section "complexity-check"
+if make complexity-check; then
+  ok "complexity-check passed"
+else
+  err "complexity-check failed — see output above"
+  fail=1
+fi
+
+# ─── Result ────────────────────────────────────────────────────────────
+if [ "$fail" -ne 0 ]; then
+  printf '\n\033[31mpre-commit failed.\033[0m Fix the errors above or skip with: git commit --no-verify\n'
+  exit 1
+fi
+
+printf '\n\033[32mpre-commit passed.\033[0m\n'

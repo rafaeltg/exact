@@ -9,7 +9,6 @@
     }
   },
   "ruff.nativeServer": "on",
-  "ruff.configuration": "pyproject.toml",
   "flake8.enable": false,
   "pylint.enabled": false
 }

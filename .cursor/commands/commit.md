@@ -51,7 +51,7 @@ restore is needed on this path.)
 
 - **Iterate** through your planned logical groups:
   a. Use `git add` for the specific files in the current logical group (avoid `-A` or `.` to ensure precision).
-  b. Run `git commit` with the drafted message via a HEREDOC (see repo commit rules). Pre-commit runs Ruff and the complexity gate — do not skip hooks.
+  b. Run `git commit` with the drafted message via a HEREDOC (see repo commit rules). Pre-commit runs `make lint-fix` and `make complexity-check` — do not skip hooks.
 - **Repeat** until **ALL** relevant changes have been committed.
 - Verify with `git status` that the working directory is clean (excluding ignored/temporary files).
 - Never commit secrets (`.env`), dummy files, test scripts, or other files you created (or that appear generated) that were not part of the intended change.

@@ -26,11 +26,13 @@ known-first-party = ["exact"]
 ```bash
 uv run ruff check
 uv run ruff format --check
-python3 .cursor/hooks/complexity-guard.py --check
+make complexity-check
 uv run pytest -q
 ```
 
-Use `uv run` for ruff/pytest. Host bare invocations that diverge from project habit are not the review standard.
+Or simply: `make check`.
+
+Use `uv run` / `make` for ruff/pytest/complexity. Host bare invocations that diverge from project habit are not the review standard.
 
 ## `from __future__ import annotations`
 
