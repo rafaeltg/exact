@@ -26,13 +26,57 @@ Two modes. **Implement** when writing or refactoring. **Review** when evaluating
 
 ## Gate 0 — required before writing
 
-Do not write until you have read:
+Writing code before this gate completes is a DoD failure. Soft intent does not substitute.
+
+### Read — mandatory, in order
 
 1. `AGENTS.md` (structure, invariants, bounds)
 2. `pyproject.toml` (ruff, pytest — the configured tool rules)
-3. Two or three neighboring files for import shape and naming already compliant with this skill
+3. Two or three **compliant** neighboring files in the same package
 
-If a neighbor violates this skill, do not propagate the violation.
+Neighbor rules:
+
+- Import shape, naming, and **function size** come from compliant neighbors only
+- Match the thinnest similar unit in that module — not the fattest historical one
+- A neighbor that violates this skill is not a template; do not propagate the violation
+
+### Compose units before any body — mandatory
+
+Do not open a Write/StrReplace on a new or grown function until all of these exist (in the reply or in a stub file):
+
+1. **Unit list** — every new responsibility named as a function or type title
+2. **One job test** — each unit has one verb; two verbs ⇒ two units
+3. **Budget self-check** against [Complexity budgets](#complexity-budgets--landmines) for each unit
+4. **Extract-first** when the unit matches a [Known breach shape](#known-breach-shapes--exact) — helpers and value objects first, thin orchestrator last
+
+Bodies come after the unit list clears the budget self-check. A single Write that introduces an over-budget function is forbidden even if a later edit would repair it — `preToolUse --pre` denies that Write before disk.
+
+### Complexity budgets — landmines
+
+Enforcer: `.cursor/hooks/complexity-guard.py` (`--pre` before Write/StrReplace; `--check` at commit). These numbers are the contract; inventing alternate budgets is forbidden.
+
+| Metric | Max | Gotcha the model misses |
+|--------|-----|-------------------------|
+| Parameters | 6 | `self`/`cls` excluded; `*args`/`**kwargs` each count as one; keyword-only params count |
+| Cyclomatic complexity | 10 | Every `if`/`elif`/`for`/`while`/`except`/`assert`/ternary/`and`/`or`/comprehension `if`/non-`_` match case adds a branch |
+| Function length | 40 | Code lines only — docstring, blanks, and comment-only lines do not count; that does **not** license packing logic onto fewer lines with denser branches |
+| Nesting depth | 3 | `elif` chains do not add depth; nested `def` is a separate function with its own budgets |
+
+Ruff runs **after** an allowed write. Format does not change CC, params, or nesting. Do not “save” length budget with formatting tricks.
+
+### Known breach shapes — exact
+
+These shapes have already tripped `--pre` / the gate in this repo. Reproducing them is a landmine:
+
+| Shape | Failure mode | Required composition |
+|-------|--------------|----------------------|
+| Many token/metric kwargs on one builder (`llm_event`-class) | Parameter budget | One optional `usage`/`tokens` mapping (or a small typed object); builder ≤ 6 params |
+| Event-loop aggregator that folds several `kind` branches + cost math (`aggregate`-class) | CC + length | Empty totals → `_fold_*` per kind → finalize costs; orchestrator only dispatches |
+| String assembly with stacked `or` / ternaries per field (`format_references`-class) | CC | One `_line(item)` (or equivalent) owns field fallbacks; caller only maps |
+| Clarify / plan / research “decide” functions that grow past 40 lines | Length | Split by phase (guards → LLM invoke → state patch); do not keep “one node = one function” when the node has phases |
+| Tool response munging that re-parses the same payload in N helpers | Landmine in Forbidden | Share one normalized base; do not re-walk raw vendor JSON per helper |
+
+When a unit matches a row above, **helpers first, orchestrator last**. Writing the orchestrator body first and “extracting later” is forbidden.
 
 ## Definition of Done — mandatory gates
 
@@ -56,6 +100,7 @@ Required:
 - Every module starts with `from __future__ import annotations`
 - Public signatures typed; all imports at module top
 - Dependencies injected via `Runtime` or constructors — module-level client singletons that block fakes are forbidden
+- Gate 0 unit list was completed **before** the Write that introduced each new function
 
 Do not invent mypy/`type: ignore` policy the repo never configured. Do not leave public signatures untyped.
 
@@ -126,22 +171,26 @@ Shipping any of these is a DoD failure:
 - N helpers that each re-parse the same input — share a base or hoist once
 - Plan/spec anchors in comments
 - Invented sources or unsourced claims — gaps go in `uncovered` / `Finding.gaps`, never in claims
+- **Compose-then-split**: shipping an over-budget function “temporarily” and extracting after `--pre` denies — the deny is a failure of Gate 0, not a normal edit step
+- **Bool flag / state-bag / shared-locals split** used to silence the complexity gate — see repair order; these move the breach, they do not remove it
+- Copying an over-budget neighbor because “the module already looks like that”
 
 ## Over-budget functions — mandatory repair order
 
-`.cursor/hooks/complexity-guard.py` owns the budgets — do not restate the numbers. Stop at the first repair that works:
+Applies when `--pre` denies or `--check` fails. Stop at the first repair that works. Pattern catalog: [references/refactoring-patterns.md](references/refactoring-patterns.md) §11.
 
 1. Remove a dead branch
 2. Replace nesting with an early return
 3. Move a whole responsibility to a new named unit
 4. Extract a helper only when the helper has its own reason to exist (state that reason in one sentence that does not name the caller)
 
-Forbidden repairs:
+Forbidden repairs (landmines — each fails review even if metrics drop):
 
 - Boolean parameter to merge two behaviours
 - State bag / dict to fake a lower parameter count
 - Split into two halves that share most of the caller's locals
 
+Gotcha: a deny `agent_message` already names the breach metric. Re-read Gate 0 and the matching [Known breach shape](#known-breach-shapes--exact); do not retry the same shape with renamed locals.
 ---
 
 # Review mode
@@ -185,7 +234,7 @@ Flag every `test-design` violation: private access, implementation assertions, m
 
 ### Pass 5 — Polish
 
-Flag: naming violations; comment/docstring hygiene breaks; any [Forbidden](#forbidden--landmines) item; untyped public signatures; complexity-guard breaches or forbidden repairs.
+Flag: naming violations; comment/docstring hygiene breaks; any [Forbidden](#forbidden--landmines) item; untyped public signatures; complexity-guard breaches or forbidden repairs; new functions that match a [Known breach shape](#known-breach-shapes--exact) without extract-first composition.
 
 ## Severity — mandatory classification
 

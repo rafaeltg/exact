@@ -183,3 +183,79 @@ Forbidden:
 - Boolean flag merging two behaviours
 - State-bag to fake a lower parameter count
 - Split that shares most of the caller's locals
+
+## 12. Extract-first — known exact breach shapes
+
+Landmine: writing the fat orchestrator, then extracting after the gate denies.
+
+### Token/metric builder (parameter budget)
+
+```python
+# Forbidden — 8 keyword fields on one builder
+def llm_event(
+    *,
+    node,
+    role,
+    model,
+    input_tokens=0,
+    output_tokens=0,
+    cache_read=0,
+    cache_creation=0,
+    calls=1,
+) -> dict: ...
+
+
+# Required — ≤6 params; counts travel in one mapping/object
+def llm_event(
+    *,
+    node: str,
+    role: str,
+    model: str,
+    usage: dict[str, int] | None = None,
+    calls: int = 1,
+) -> dict: ...
+```
+
+### Kind-fold aggregator (CC + length)
+
+```python
+# Forbidden — one loop owns every kind branch and cost math
+def aggregate(events: list[dict]) -> dict:
+    for ev in events:
+        if ev["kind"] == "llm":
+            ...
+        elif ev["kind"] in exa_kinds:
+            ...
+    return {..., "total": ...}
+
+# Required — fold helpers own branches; orchestrator dispatches + finalizes
+def aggregate(events: list[dict]) -> dict:
+    totals = _empty_totals()
+    for ev in events or []:
+        if ev.get("kind") == "llm":
+            _fold_llm(totals, ev, int(ev.get("calls") or 1))
+            continue
+        _fold_tool(totals, str(ev.get("kind") or ""), int(ev.get("calls") or 1))
+    return _finalize(totals)  # or inline finalize if still under budget
+```
+
+### Field-fallback line formatter (CC)
+
+```python
+# Forbidden — stacked or/ternary per field inside the list builder
+def format_references(sources: list | None) -> list[str]:
+    lines = ["## References"]
+    for s in sources or []:
+        loc = s.get("url") or s.get("doi") or ""
+        ...
+        lines.append(f"[{sid}] {title}{extra}{prov}")
+    return lines
+
+
+# Required — one line formatter owns fallbacks
+def format_references(sources: list | None) -> list[str]:
+    items = sources or []
+    if not items:
+        return []
+    return ["## References", *(_reference_line(s) for s in items)]
+```

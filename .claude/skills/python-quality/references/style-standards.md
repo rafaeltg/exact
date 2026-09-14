@@ -75,4 +75,17 @@ Google-style for non-obvious public APIs. Skip when the signature is sufficient.
 
 ## Complexity guard — required
 
-`.cursor/hooks/complexity-guard.py` owns budgets. After Python edits, format then measure. Commits run `--check`. Repair order is in the main skill. Inventing alternate budgets in a review is forbidden.
+`.cursor/hooks/complexity-guard.py` owns enforcement. Budgets and known breach
+shapes live in the main skill (Gate 0). Inventing alternate budgets in a
+review is forbidden.
+
+| Hook | When | Effect |
+|------|------|--------|
+| `preToolUse --pre` | Before `Write` / `StrReplace` | Deny over-budget prospective content; nothing hits disk |
+| `afterFileEdit` | After an allowed write | Ruff lint-fix + format only |
+| `postToolUse` | `TabWrite` | Advisory complexity context |
+| `--check` | Pre-commit / DoD | Fail if any tracked function is over budget |
+
+Gotcha: a post-edit soft signal is not permission to park debt. `--pre` and
+`--check` are the hard gates. Shell/paste bypasses `--pre`; `--check` still
+applies.
