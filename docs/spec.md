@@ -1,0 +1,286 @@
+# Exact — Open Deep Research (POC v1.2)
+
+**Version:** 1.2.0  
+**Status:** Implementable. LangGraph ODR pipeline with Exa + Elicit.  
+**Surface:** CLI  
+**Objective:** Deliver LangChain’s [Open Deep Research](https://www.langchain.com/blog/open-deep-research) architecture: Scope → Research → Write. Tools are Exa and Elicit only. Clarification is grounded in an Exa (optional Elicit) scout. Every factual claim in the report carries a `[src_*]` id that resolves to a retrieved source. Gaps are listed, not invented.
+
+This does **not** guarantee truth. Citations must be checkable. Spend is capped, not unbounded.
+
+---
+
+## 0. Relative to ODR and to v1.1
+
+ODR steps that v1.2 implements: conditional clarification, brief as north star, supervisor 1-vs-N, isolated sub-agents, tool-calling research loop, prune before supervisor, supervisor iteration, one-shot write (no parallel section writers).
+
+| v1.1 | v1.2 |
+| :--- | :--- |
+| Always 3 options, one interrupt | Scout first; clarify only if needed; up to 3 turns |
+| One `retrieve()` + extract | Isolated ReAct via `create_agent` + `ModelCallLimitMiddleware`: `exa_search`, `exa_people_search`, `exa_company_search`, `exa_highlights`, `elicit_search` then prune |
+| `max_iterations=2`, code-first reflect | Reflect reasons against the brief; hard cap 3 waves |
+| `InMemorySaver` | SQLite checkpointer (multi-turn HITL) |
+| ≤8 LLM calls | Per-worker tool-round cap + wave cap |
+
+Still cut: Firecrawl, Elicit Reports / MCP as product, `create_supervisor`, web UI, parallel writers, PDF/paywall full text.
+
+---
+
+## 1. Acceptance criteria
+
+A run **passes** when:
+
+1. **Citation coverage:** every `[src_*]` in `final_report` exists in `sources`.
+2. **Grounding floor:** at least one citation, or `uncovered` explains empty retrieval.
+3. **Honesty:** `uncovered` lists brief items findings marked as gaps.
+4. **ODR shape:** scout ran; clarify was skipped *or* grounded in scout titles; brief exists; workers were isolated; write ran once after research.
+5. **Bounds:** `clarify_turns <= 3`; `iteration <= 3`; ≤3 topics/wave; ≤4 model-call rounds/worker; ≤5 hits/tool call; tool strings into the loop ≤8000 chars.
+6. **Resume:** same `thread_id` continues after interrupt.
+
+QA **fails** on dangling citations or exceeded bounds. The CLI exits with status `1` when `uncovered` contains a `dangling:` item. The CLI exits with status `0` when the run completes without dangling citations.
+
+---
+
+## 2. Roles
+
+| Role | Kind | Job |
+| :--- | :--- | :--- |
+| User | Human | Query; skip / pick / text on clarify turns |
+| Scout | Node, 0 LLM | Exa 5 highlights; Elicit 5 iff academic signal + key |
+| Decide-clarify | Node, router LLM | Given query + scout: skip or ask a scout-grounded question |
+| Clarifier | `interrupt()` loop | Pause; append user reply to `messages` |
+| Brief writer | Node, compress LLM | Compress query + scout + clarify chat → `ResearchBrief` |
+| Planner (supervisor) | Node, router LLM | 1 topic if simple; 2–3 if compare/list/multi-entity |
+| Researcher | Isolated subgraph | Tool loop (≤4 rounds, research LLM) then prune (compress LLM) → `Finding` |
+| Reflector | Node, router LLM + cap | Brief vs findings; follow-ups or write |
+| Writer | Node, write LLM | One-shot Markdown |
+| Auditor | Code | Resolve `[src_*]`; append `## Audit` if dangling |
+| Runtime | CLI + SQLite | `thread_id`, keys, caps; role LLM clients |
+
+Planner ≠ auditor.
+
+---
+
+## 3. Graph
+
+```
+START
+  → scout
+  → decide_clarify
+       ├─ needed=false → generate_brief
+       └─ needed=true  → ask_user (interrupt)
+                            ├─ more turns and < max_clarify_turns → decide_clarify
+                            └─ else → generate_brief
+  → plan_topics                 # 1..3 topics; no new query → write
+  → Send(research_agent)×N
+  → reflect
+       ├─ follow-ups and iteration < 3 → plan_topics
+       └─ else → write_report → audit_citations → END
+```
+
+```python
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import interrupt, Command, Send
+
+app = workflow.compile(checkpointer=SqliteSaver.from_conn_string("exact.sqlite"))
+# HITL is interrupt() inside ask_user. No interrupt_before.
+```
+
+**`research_agent`:** parent graph node. Input `{topic, brief, prior_titles}` only. Returns deltas `{sources, findings, errors}`. The tool loop is an ephemeral LangChain `create_agent` with `ModelCallLimitMiddleware(run_limit=max_tool_rounds)` (model-call rounds, not per-tool invocations). Tool messages stay inside that agent and are dropped after prune; they never enter parent `messages`.
+
+**`Send`:** from `plan_topics` via conditional edge. Do not invoke research workers in a Python loop.
+
+**Reflect exit:** `iteration >= 3` → write. Else LLM `{done, followups, uncovered}`. If `done` or no follow-ups → write. Else ≤2 follow-up topics, `iteration += 1`.
+
+---
+
+## 4. State
+
+```python
+from typing import Annotated, Literal, Optional
+from typing_extensions import TypedDict
+import operator
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
+
+
+class Source(BaseModel):
+    id: str
+    title: str
+    url: Optional[str] = None
+    doi: Optional[str] = None
+    snippet: str  # cap 1200
+    provider: Literal["exa", "elicit"]
+    retrieved_at: str
+
+
+class Finding(BaseModel):
+    topic_id: str
+    claims: list[str]
+    source_ids: list[str]
+    gaps: list[str]
+    covered: list[str] = []
+
+
+class ClarificationOption(BaseModel):
+    id: str
+    label: str
+    description: str = ""
+
+
+class UserClarification(BaseModel):
+    kind: Literal["skip", "pick", "text"]
+    option_ids: list[str] = []
+    text: Optional[str] = None
+
+
+class ResearchBrief(BaseModel):
+    question: str
+    audience: str = "general"
+    intent: Literal["web", "academic", "mixed"]
+    must_cover: list[str] = Field(max_length=5)
+    exclusions: list[str] = []
+    success_criteria: list[str] = []
+
+
+class Topic(BaseModel):
+    id: str
+    query: str
+    status: Literal["pending", "done", "failed"] = "pending"
+
+
+class ExactState(TypedDict):
+    initial_query: str
+    messages: Annotated[list[AnyMessage], add_messages]  # clarify thread only
+    scout_hits: list[Source]  # checkpointed as dicts
+    clarification_options: list[ClarificationOption]
+    user_clarification: Optional[UserClarification]
+    clarify_question: str
+    clarify_needed: bool  # routing; replace
+    clarify_turns: int
+    max_clarify_turns: int  # default 3
+    skip_clarify: bool
+    brief: Optional[ResearchBrief]
+    topics: list[Topic]  # replace
+    sources: Annotated[list[Source], operator.add]
+    findings: Annotated[list[Finding], operator.add]
+    errors: Annotated[list[str], operator.add]
+    usage: Annotated[list[dict], operator.add]  # LLM + vendor call events
+    prior_titles: list[str]
+    prior_queries: list[str]
+    followups: list[str]
+    continue_research: bool  # routing; replace
+    iteration: int
+    max_iterations: int  # 3
+    final_report: str
+    uncovered: list[str]
+```
+
+Reducers: `add` keys return **deltas**. `topics` / scout / options / `prior_titles` / `prior_queries` / `followups` / `uncovered` / routing flags are replace. Source ids: `src_{topic_id}_{i}`. Nodes write Pydantic models via `.model_dump()` so checkpointed dicts stay valid shapes.
+
+---
+
+## 5. Tools (research subgraph only)
+
+| Tool | Service | Rule |
+| :--- | :--- | :--- |
+| `exa_search` | Exa search | Default discovery and news. `num_results=5`. |
+| `exa_people_search` | Exa search `category=people` | People / roles / expertise. `num_results=5`. No date or domain filters. |
+| `exa_company_search` | Exa search `category=company` | Companies / funding / org facts. `num_results=5`. No date or domain filters. |
+| `exa_highlights` | Exa contents/highlights | Read a URL already found. Not full page. |
+| `elicit_search` | Elicit `/api/v2/search/papers` | Enabled iff key + `brief.intent` in `{academic, mixed}`. Else returns structured disabled. `maxResults=5`. |
+
+Scout uses the same HTTP clients, not the tool loop. Scout always runs general Exa search (no people/company category). Academic signal for scout Elicit: query heuristic only (`study`, `trial`, `paper`, `meta-analysis`, `doi`, …) because scout runs before clarify. Academic signal for brief intent: the same heuristic on the query, clarification text, or a picked option label/description.
+
+Planner shapes topic strings so workers can choose people, company, news-shaped web, or general web. Researcher selects the matching Exa tool.
+
+No Firecrawl. No MCP. No Elicit Reports.
+
+---
+
+## 6. Clarification (ODR + Exa)
+
+`decide_clarify` sees `initial_query` + scout titles/snippets. Structured output:
+
+- `needed=false` → brief.
+- `needed=true` → one question that **cites scout titles**; optional 2–4 angles from hits; `interrupt()`.
+
+If `needed=true` and scout hits exist, the question must contain at least one scout title. If it does not, treat as `needed=false`. Do not interrupt on an ungrounded question. Generic “narrow or broaden?” only if scout is empty. Resume `skip` | `pick` | `text`. Invalid → `skip` (proceed to brief). `--skip-clarify` forces `needed=false`.
+
+`ask_user` and the route after `ask_user` read `max_clarify_turns` from state. Default is `3`.
+
+---
+
+## 7. Node contracts
+
+| Node | LLM role | Notes |
+| :--- | :--- | :--- |
+| `scout` | none | Exa 5; optional Elicit 5. Timeout 20s. Fail → empty + `errors`. |
+| `decide_clarify` | router | Skip or grounded question. |
+| `ask_user` | none | `interrupt()`. |
+| `generate_brief` | compress | `must_cover` 1–5. Written once. |
+| `plan_topics` | router | 1–3; follow-up ≤2, no duplicate queries. Follow-up queries come from `reflect`. Do not treat them as prior. If every candidate repeats a prior query, write. |
+| `research_agent` | research + compress | ≤4 model-call rounds via `create_agent` + `ModelCallLimitMiddleware` (research) + 1 prune (compress). Isolated. Tool-loop messages use compact snippets (≤240 chars); each tool string into the loop is capped at 8000 chars; prune sees full snippets (≤1200). Tool notes are name + query/url only. Vendor exception → `gaps=["retrieval failed"]` and `errors`. Empty hits → `gaps=["no sources"]`. Prior-title drop that leaves the bag empty → `gaps=["no new sources"]`. |
+| `reflect` | router | Forced write if `iteration >= 3`. Follow-ups go to `followups`. Do not replace `topics`. |
+| `write_report` | write | Temp 0. Cite existing ids. `## Open questions`. |
+| `audit_citations` | none | Regex `[src_…]`. |
+
+---
+
+## 7b. Usage observability
+
+Each LLM and successful vendor call appends a `usage` event (reducer `operator.add`). Events store counts and tokens only. The CLI prints `## Usage` after the report (and from checkpointed state after a clarify interrupt). USD is estimated at print time from a dated rate table in `usage.py` (Haiku / Sonnet / Exa). Elicit is counted but priced at $0 (subscription). Vendor retries inside Exa/Elicit clients are not metered. Unknown LLM model ids show tokens and omit that slice from the dollar total.
+
+LLM events may include `cache_read` and `cache_creation` from `usage_metadata.input_token_details`. `input_tokens` is the LangChain total (uncached + cache). Cost uses Anthropic multipliers: cache_read at 0.1x input, cache_creation at 1.25x input (5m write estimate).
+
+Event fields: `kind` (`llm` | `exa_search` | `exa_people_search` | `exa_company_search` | `exa_highlights` | `elicit_search`), `node`, optional `role` / `model` / `input_tokens` / `output_tokens` / `cache_read` / `cache_creation`, `calls` (default 1). `exa_people_search` and `exa_company_search` price the same as `exa_search`.
+
+After the report, the CLI always prints `## References` from `sources` (stable ids/titles/urls). The writer must cite `[src_*]` ids but must not invent a bibliography.
+
+Parent `messages` stay clarify-only. Research tool transcripts are never written to usage events.
+
+---
+
+## 8. Runtime
+
+| | |
+| :--- | :--- |
+| CLI | `uv run exact "…"` |
+| Model | `EXACT_MODEL` (default `anthropic:claude-haiku-4-5` via `init_chat_model`) |
+| Role models | Optional `EXACT_MODEL_ROUTER`, `EXACT_MODEL_RESEARCH`, `EXACT_MODEL_COMPRESS`, `EXACT_MODEL_WRITE`. Empty inherits `EXACT_MODEL`. |
+| Role map | router: `decide_clarify`, `plan_topics`, `reflect`. research: tool loop. compress: `generate_brief`, prune. write: `write_report`. |
+| Temperature | `EXACT_TEMPERATURE` (default `0`) |
+| Output caps | `EXACT_MAX_TOKENS_ROUTER` / `_RESEARCH` / `_COMPRESS` / `_WRITE` (defaults 1024 / 1024 / 2048 / 8192) |
+| Reasoning | `EXACT_REASONING_EFFORT` (default `none`; applied only to GPT-5/6 model ids) |
+| Thinking | `EXACT_THINKING_BUDGET` (default `0` = off; Anthropic only when > 0) |
+| Keys | `EXA_API_KEY` required; `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; `ELICIT_API_KEY` optional |
+| Checkpointer | SQLite `exact.sqlite` |
+| Concurrency | `max_concurrency=3` |
+| HTTP | 20s, 1 retry on timeout, 429, or 5xx. Exa has no SDK cancel; on soft timeout Exact reaps the worker thread before retry so calls do not overlap. |
+| Exit | `0` on success; `1` if `uncovered` contains `dangling:` |
+
+`--skip-clarify` for CI. `--thread-id` to resume.
+
+If the graph interrupts for clarification, the CLI prints the question and exits. Run the CLI again with the same `--thread-id` to answer.
+
+`ExaClient` accepts an injected SDK. `ElicitClient` accepts an injected `post`. Tests must not call live vendors.
+
+---
+
+## 9. Layout
+
+```
+src/exact/
+  cli.py config.py models.py graph.py prompts.py audit.py intent.py usage.py
+  nodes/   scout, clarify, brief, plan, research, reflect, write, audit_node
+  tools/   exa.py elicit.py
+tests/
+  test_audit.py test_clarify.py test_research.py test_graph.py
+  test_cli.py test_exa.py test_elicit.py test_status.py test_usage.py
+```
+
+---
+
+## 10. Out of scope
+
+Firecrawl, Elicit Reports/Systematic Review/MCP product, LangGraph Studio as required UI, unbounded reflection, parallel section writing, `create_supervisor`, guaranteed truth.
