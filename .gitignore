@@ -206,6 +206,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Complexity-guard run log
+.test-reports/
+
 # PyPI configuration file
 .pypirc
 
@@ -216,3 +219,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# exact checkpointer / local DB
+*.sqlite
+*.sqlite-*
