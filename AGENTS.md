@@ -15,7 +15,7 @@ uv run pre-commit install
 
 Install hooks once after clone. Commits then run Ruff lint (with fixes), format, and the complexity gate. Do not skip hooks.
 
-Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent edits run `.cursor/hooks/ruff-after-edit.py` then `.cursor/hooks/complexity-guard.py` (order is load-bearing: the guard measures post-format line counts). `postToolUse` runs the guard again so a breach is injected as `additional_context`.
+Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` run `.cursor/hooks/complexity-guard.py --pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `.cursor/hooks/ruff-after-edit.py` (lint-fix + format). `TabWrite` still gets a post-edit complexity advisory via `postToolUse`.
 
 ## Bounds (do not loosen)
 
@@ -45,7 +45,7 @@ If you change topology, bounds, tools, or citation rules, update `docs/spec.md` 
 
 ## Complexity budgets
 
-`.cursor/hooks/complexity-guard.py` owns the numbers. Do not restate them here. Tests, `alembic/`, and `scripts/dev/` are exempt. After each Python edit the Cursor hook formats, then the guard blocks a new or worse breach. Commits run `--check`. The tree must have no over-budget functions. Do not park a breach.
+`.cursor/hooks/complexity-guard.py` owns the numbers. Do not restate them here. Tests, `alembic/`, and `scripts/dev/` are exempt. `preToolUse --pre` denies a new or worse breach vs HEAD before the write lands. Ruff stays post-edit. Commits run `--check`. The tree must have no over-budget functions. Do not park a breach.
 
 Repair an over-budget function in this order. Stop at the first repair that works.
 

@@ -34,9 +34,9 @@ uv run pytest -q
 ```
 
 Editor: install the Ruff extension. `.vscode/settings.json` turns on format
-and lint-fix on save. Agent edits also run
-`.cursor/hooks/ruff-after-edit.py` then `.cursor/hooks/complexity-guard.py`
-(order is load-bearing: the guard measures post-format line counts).
+and lint-fix on save. Agent `Write`/`StrReplace` hit
+`.cursor/hooks/complexity-guard.py --pre` before disk; after an allowed
+write, `afterFileEdit` runs `.cursor/hooks/ruff-after-edit.py`.
 
 ## 2. Tests
 
@@ -79,7 +79,8 @@ Do not skip hooks. `git commit --no-verify` is for emergencies only.
 `.cursor/hooks/complexity-guard.py` owns the budgets. Do not restate the
 numbers here. Tests, `alembic/`, and `scripts/dev/` are exempt.
 
-- Edit-time hook: blocks a **new or worse** breach vs HEAD.
+- Edit-time `preToolUse --pre`: denies a **new or worse** breach vs HEAD
+  before the write. Ruff lint/format remain post-edit.
 - Commit / merge gate: `--check` fails if any tracked function is over
   budget. The tree must have no over-budget functions. Do not park a breach.
 

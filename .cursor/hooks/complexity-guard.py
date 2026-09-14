@@ -2,9 +2,15 @@
 """`.cursor/hooks/complexity-guard.py` — Hook that blocks Python edits which
 violate complexity budgets.
 
-Reads Cursor or Claude Code hook JSON from stdin, analyzes the edited .py
-file with the stdlib ast module, and exits 2 with a violation report on
-stderr so the agent fixes the code before moving on.
+Three modes:
+
+- `--pre` (Cursor `preToolUse` on Write/StrReplace): build the prospective
+  file from tool arguments, measure it, and deny with
+  `permission: deny` before anything hits disk. Fails closed.
+- No flag (Cursor `afterFileEdit` / `postToolUse`, e.g. TabWrite): measure
+  the file already on disk and inject `additional_context`. Fails open.
+- `--check` (pre-commit merge gate): measure every tracked `.py` in the
+  index. Fails closed. A silent pass here hides real regressions.
 
 Budgets (per function):
     cyclomatic complexity <= 10   (+1 per branch point: if/elif, loops,
@@ -32,17 +38,13 @@ stops blocking later edits to that file; `--check` is what keeps it from
 merging. A renamed file has no `HEAD:<new path>`, so every breach in it
 blocks.
 
-Fails open (exit 0): garbage stdin, missing file, or a file the host
-interpreter cannot parse (syntax newer than the running python3) — a
-broken hook must never block real work. `--check` is the one path that
-does not fail open. It measures git's index and fails when any tracked
-function is over budget. A silent failure there hides real regressions.
+Post-edit mode fails open (exit 0) on garbage stdin, missing file, or a
+file the host interpreter cannot parse — a broken advisory hook must not
+freeze the session. `--pre` and `--check` do not fail open.
 
-`python3 .cursor/hooks/complexity-guard.py --check` is the merge gate.
-Pre-commit runs it. The hook blocks one edit; the gate blocks a commit.
-The gate refuses to run on a python older than the project target,
-because an interpreter that cannot parse the repo measures its files as
-debt-free.
+Ruff lint/format stay on `afterFileEdit` and run only after a write is
+allowed. Format does not change cyclomatic complexity, parameters, or
+nesting; function length ignores blanks and comments.
 
 Every hook run appends one JSON object to
 `.test-reports/complexity-guard.jsonl`. Every record carries `ts`, `result`
@@ -50,13 +52,11 @@ and `detail`; a record from a completed run also carries `session_id`,
 `tool_name`, `file` and `python`. The short shape is what an early
 fail-open writes, so a reader must not filter on `file` — that drops
 exactly the records showing the guard did not run. `result` is one of
-`skip`, `exempt`, `pass`, `block` or `fail-open`. A fail-open also prints a
-PostToolUse `additionalContext` object, so a broken guard is visible to
-the agent instead of reading as a clean pass.
+`skip`, `exempt`, `pass`, `block`, `fail-open`, or `fail-closed`.
 
-Scope differs between the two paths. The hook checks whatever file the
-edit named, tracked or not. `--check` measures git's index
-(`git ls-files -c`), so a local scratch file never turns the gate red.
+Scope differs between the paths. Edit hooks check whatever file the tool
+named, tracked or not. `--check` measures git's index (`git ls-files -c`),
+so a local scratch file never turns the gate red.
 """
 
 from __future__ import annotations
@@ -546,12 +546,11 @@ def _source_lines(source: bytes) -> list[str]:
     return source.decode("utf-8", "replace").split("\n")
 
 
-def _analyze(path: Path) -> str:
-    """Return a violation report for `path`, or "" if nothing new is wrong."""
+def _analyze_source(path: Path, source: bytes) -> str:
+    """Return a violation report for `source`, or "" if nothing new is wrong."""
     try:
-        source = path.read_bytes()
         tree = ast.parse(source, filename=str(path))
-    except (OSError, SyntaxError, ValueError):
+    except (SyntaxError, ValueError):
         return ""
     lines = _source_lines(source)
     recorded = _head_entries(path)
@@ -567,24 +566,94 @@ def _analyze(path: Path) -> str:
     )
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    """Parse the gate-mode flags. Hook mode passes no arguments at all.
+def _analyze(path: Path) -> str:
+    """Return a violation report for on-disk `path`, or "" if nothing new is wrong."""
+    try:
+        source = path.read_bytes()
+    except OSError:
+        return ""
+    return _analyze_source(path, source)
 
-    A usage error exits 1, never argparse's default 2: 2 is the PostToolUse
-    block code, so a hook registered with a stray argument would block every
-    Python edit in the session and show an argparse usage string as the
-    violation report.
+
+def _write_prospective(tool_input: dict) -> bytes | None:
+    """Full file bytes from a Write tool_input, or None when contents are absent."""
+    raw = tool_input.get("contents")
+    if raw is None:
+        raw = tool_input.get("content")
+    if not isinstance(raw, str):
+        return None
+    return raw.encode("utf-8")
+
+
+def _apply_str_replace(current: str, tool_input: dict) -> str | None:
+    """Apply one StrReplace to `current`, or None when the edit cannot apply."""
+    old = tool_input.get("old_string")
+    new = tool_input.get("new_string")
+    if not isinstance(old, str) or not isinstance(new, str):
+        return None
+    if old not in current:
+        return None
+    if tool_input.get("replace_all"):
+        return current.replace(old, new)
+    return current.replace(old, new, 1)
+
+
+def _str_replace_prospective(path: Path, tool_input: dict) -> bytes | None:
+    """Prospective file bytes after StrReplace, or None when it cannot be built."""
+    try:
+        current = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    updated = _apply_str_replace(current, tool_input)
+    return None if updated is None else updated.encode("utf-8")
+
+
+def _is_str_replace(tool_name: str, tool_input: dict) -> bool:
+    return tool_name == "StrReplace" or "old_string" in tool_input
+
+
+def _prospective_bytes(path: Path, payload: dict, tool_input: dict) -> bytes | None:
+    """Bytes the tool would write, built from arguments without touching disk writes."""
+    tool_name = str(payload.get("tool_name") or "")
+    if _is_str_replace(tool_name, tool_input):
+        return _str_replace_prospective(path, tool_input)
+    return _write_prospective(tool_input)
+
+
+def _emit_permission(permission: str, *, agent_message: str | None = None) -> int:
+    """Print a Cursor preToolUse permission verdict and return the exit code."""
+    body: dict[str, str] = {"permission": permission}
+    if agent_message is not None:
+        body["agent_message"] = agent_message
+        body["user_message"] = (
+            "Complexity budget violation — edit blocked before write."
+        )
+        print(agent_message, file=sys.stderr)
+    print(json.dumps(body))
+    return 2 if permission == "deny" else 0
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse mode flags. Bare hook mode (post-edit) passes no arguments.
+
+    A usage error exits 1, never argparse's default 2: 2 is the deny / block
+    code, so a hook registered with a stray argument would deny every Python
+    edit in the session and show an argparse usage string as the report.
     """
     parser = argparse.ArgumentParser(prog="complexity-guard.py")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--pre", action="store_true")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         # argparse exits 2 on a usage error and 0 on --help. Keep --help at
         # 0; anything else becomes 1, never 2.
         raise SystemExit(0 if exc.code == 0 else 1) from exc
-    if not args.check:
-        print("error: pass --check", file=sys.stderr)
+    if args.check and args.pre:
+        print("error: pass only one of --check or --pre", file=sys.stderr)
+        raise SystemExit(1)
+    if not args.check and not args.pre:
+        print("error: pass --check or --pre", file=sys.stderr)
         raise SystemExit(1)
     return args
 
@@ -670,7 +739,7 @@ def _require_gate_interpreter() -> None:
 def check() -> int:
     """Fail when any tracked function is over budget.
 
-    The hook only sees the file this edit named. An edit made outside a
+    The edit hooks only see the file this tool named. An edit made outside a
     hooked session, or debt already on HEAD, still has to reach zero
     before it can merge.
     """
@@ -700,7 +769,7 @@ def _base_record(payload: dict, path: Path | None) -> dict[str, object]:
 
 
 def _run_hook(payload: dict) -> tuple[int, str, str | None]:
-    """The hook decision for one edit, as (exit code, result, detail).
+    """The post-edit hook decision for one file already on disk.
 
     Exemption is decided on the repo-relative path, never the absolute one,
     for the reason `measure_tree` documents: a checkout under a directory
@@ -718,7 +787,28 @@ def _run_hook(payload: dict) -> tuple[int, str, str | None]:
     return 0, "pass", None
 
 
+def _run_pre(payload: dict) -> tuple[int, str, str | None, Path | None]:
+    """The preToolUse decision for prospective Write/StrReplace contents."""
+    tool_input = _tool_input(payload)
+    path = _target_file(tool_input)
+    if path is None or path.suffix.lower() != ".py":
+        return 0, "skip", None, path
+    if _is_exempt_file(Path(_relative_key(path))):
+        return 0, "exempt", None, path
+    source = _prospective_bytes(path, payload, tool_input)
+    if source is None:
+        detail = (
+            f"complexity-guard --pre: could not build prospective source for {path}"
+        )
+        return 2, "block", detail, path
+    report = _analyze_source(path, source)
+    if report:
+        return 2, "block", report, path
+    return 0, "pass", None, path
+
+
 def main() -> int:
+    """Post-edit advisory hook. Fails open on broken input or unexpected errors."""
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -744,11 +834,49 @@ def main() -> int:
     return code
 
 
+def pre_main() -> int:
+    """preToolUse gate. Denies before disk write; fails closed on errors."""
+    record: dict[str, object] = {"ts": _now(), "python": platform.python_version()}
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        record.update(result="fail-closed", detail="unreadable stdin")
+        _log_run(record)
+        return _emit_permission(
+            "deny",
+            agent_message="complexity-guard --pre: unreadable stdin",
+        )
+    if not isinstance(payload, dict):
+        record.update(result="fail-closed", detail="non-object stdin")
+        _log_run(record)
+        return _emit_permission(
+            "deny",
+            agent_message="complexity-guard --pre: non-object stdin",
+        )
+    try:
+        _code, result, detail, path = _run_pre(payload)
+        record = _base_record(payload, path)
+        record.update(result=result, detail=detail)
+        _log_run(record)
+        if result == "block" and detail:
+            return _emit_permission("deny", agent_message=detail)
+        return _emit_permission("allow")
+    except Exception as exc:  # noqa: BLE001
+        record.update(result="fail-closed", detail=repr(exc))
+        _log_run(record)
+        return _emit_permission(
+            "deny",
+            agent_message=f"complexity-guard --pre failed: {exc!r}",
+        )
+
+
 if __name__ == "__main__":
-    # The gate is deliberately outside the fail-open wrapper: a check that
-    # silently did nothing would hide every regression at once.
+    # Gate modes are deliberately outside the post-edit fail-open wrapper: a
+    # check that silently did nothing would hide every regression at once.
     if sys.argv[1:]:
-        parse_args(sys.argv[1:])
+        mode = parse_args(sys.argv[1:])
+        if mode.pre:
+            sys.exit(pre_main())
         _require_gate_interpreter()
         sys.exit(check())
     try:

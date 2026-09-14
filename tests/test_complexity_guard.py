@@ -1,9 +1,10 @@
 """Tests for the complexity guard hook.
 
 The guard is the only enforcement of the complexity budgets. It runs from
-the Cursor edit hooks and from pre-commit via ``--check``. A regression
-here silently either stops blocking real violations or starts blocking
-valid edits. These tests are that safety net.
+Cursor ``preToolUse --pre`` (deny before write), post-edit advisory hooks
+(TabWrite), and pre-commit via ``--check``. A regression here silently
+either stops blocking real violations or starts blocking valid edits.
+These tests are that safety net.
 """
 
 from __future__ import annotations
@@ -78,6 +79,23 @@ def _run_main(
     text = raw if raw is not None else json.dumps(payload)
     monkeypatch.setattr(sys, "stdin", io.StringIO(text))
     return guard.main()
+
+
+def _run_pre(
+    monkeypatch: pytest.MonkeyPatch, payload: object, raw: str | None = None
+) -> int:
+    """Feed `payload` to pre_main() over stdin and return its exit code."""
+    import io
+
+    text = raw if raw is not None else json.dumps(payload)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(text))
+    return guard.pre_main()
+
+
+def _permission(capsys: pytest.CaptureFixture) -> dict:
+    """Parse the preToolUse JSON verdict from stdout."""
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    return json.loads(out)
 
 
 def _records(path: Path) -> list[dict]:
@@ -476,9 +494,17 @@ def test_check_lists_every_metric_of_every_function(
     assert "b.py::g  nesting depth 4 (max 3)" in out
 
 
-def test_check_flag_is_the_only_gate_mode() -> None:
-    """`--check` is the merge gate. No other mode flag may select it."""
+def test_check_and_pre_are_the_gate_modes() -> None:
+    """`--check` merges; `--pre` denies before write. Both are first-class."""
     assert guard.parse_args(["--check"]).check is True
+    assert guard.parse_args(["--pre"]).pre is True
+
+
+def test_check_and_pre_cannot_combine() -> None:
+    """One process, one mode — combining them is a misconfiguration."""
+    with pytest.raises(SystemExit) as excinfo:
+        guard.parse_args(["--check", "--pre"])
+    assert excinfo.value.code == 1
 
 
 # ── Run log ───────────────────────────────────────────────────────────
@@ -758,7 +784,7 @@ def test_gate_help_still_exits_zero(capsys: pytest.CaptureFixture) -> None:
     assert excinfo.value.code == 0
 
 
-def test_gate_requires_the_check_flag() -> None:
+def test_gate_requires_a_mode_flag() -> None:
     """No mode flag is a misconfiguration. Exit 1, never the hook's block code."""
     with pytest.raises(SystemExit) as excinfo:
         guard.parse_args([])
@@ -801,3 +827,143 @@ def test_gate_refuses_an_interpreter_older_than_the_project_target(
 def test_gate_accepts_the_running_interpreter() -> None:
     """The tests run on the project target, so the guard must stay quiet."""
     assert guard._require_gate_interpreter() is None
+
+
+# ── preToolUse (--pre) ────────────────────────────────────────────────
+
+
+def test_pre_write_allows_clean_contents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A Write under budget must be allowed before any disk write."""
+    target = tmp_path / "ok.py"
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {
+            "path": str(target),
+            "contents": "def f(a):\n    return a\n",
+        },
+    }
+
+    assert _run_pre(monkeypatch, payload) == 0
+    assert _permission(capsys)["permission"] == "allow"
+    assert not target.exists()
+
+
+def test_pre_write_denies_over_budget_contents_before_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    log_file: Path,
+) -> None:
+    """Over-budget Write must deny and leave the path untouched."""
+    params = ", ".join(f"p{i}" for i in range(9))
+    target = tmp_path / "bad.py"
+    payload = {
+        "session_id": "pre1",
+        "tool_name": "Write",
+        "tool_input": {
+            "path": str(target),
+            "contents": f"def f({params}):\n    return 1\n",
+        },
+    }
+
+    assert _run_pre(monkeypatch, payload) == 2
+    verdict = _permission(capsys)
+    assert verdict["permission"] == "deny"
+    assert "parameters 9 (max 6)" in verdict["agent_message"]
+    assert not target.exists()
+    assert _records(log_file)[0]["result"] == "block"
+
+
+def test_pre_str_replace_denies_when_result_breaches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """StrReplace is measured on the prospective file, not the prior disk bytes."""
+    target = tmp_path / "edit.py"
+    target.write_text("def f(a):\n    return a\n")
+    params = ", ".join(f"p{i}" for i in range(9))
+    payload = {
+        "tool_name": "StrReplace",
+        "tool_input": {
+            "path": str(target),
+            "old_string": "def f(a):\n    return a\n",
+            "new_string": f"def f({params}):\n    return 1\n",
+        },
+    }
+
+    assert _run_pre(monkeypatch, payload) == 2
+    assert _permission(capsys)["permission"] == "deny"
+    assert target.read_text() == "def f(a):\n    return a\n"
+
+
+def test_pre_str_replace_allows_when_result_is_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A StrReplace that stays under budget must be allowed."""
+    target = tmp_path / "edit.py"
+    target.write_text("def f(a):\n    return a\n")
+    payload = {
+        "tool_name": "StrReplace",
+        "tool_input": {
+            "path": str(target),
+            "old_string": "return a",
+            "new_string": "return a + 1",
+        },
+    }
+
+    assert _run_pre(monkeypatch, payload) == 0
+    assert _permission(capsys)["permission"] == "allow"
+
+
+def test_pre_fails_closed_on_unreadable_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    log_file: Path,
+) -> None:
+    """--pre must deny when stdin is garbage; fail-open would let debt land."""
+    assert _run_pre(monkeypatch, None, raw="{") == 2
+    assert _permission(capsys)["permission"] == "deny"
+    assert _records(log_file)[0]["result"] == "fail-closed"
+
+
+def test_pre_denies_when_prospective_source_cannot_be_built(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Missing Write contents cannot be measured, so the edit is denied."""
+    target = tmp_path / "empty.py"
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"path": str(target)},
+    }
+
+    assert _run_pre(monkeypatch, payload) == 2
+    assert "could not build prospective source" in _permission(capsys)["agent_message"]
+
+
+def test_pre_exempts_test_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Exempt paths stay writable under --pre the same as post-edit mode."""
+    params = ", ".join(f"p{i}" for i in range(9))
+    target = tmp_path / "test_thing.py"
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {
+            "path": str(target),
+            "contents": f"def f({params}):\n    return 1\n",
+        },
+    }
+
+    assert _run_pre(monkeypatch, payload) == 0
+    assert _permission(capsys)["permission"] == "allow"

@@ -1,20 +1,24 @@
 {
   "version": 1,
   "hooks": {
+    "preToolUse": [
+      {
+        "command": "python3 .cursor/hooks/complexity-guard.py --pre",
+        "matcher": "Write|StrReplace",
+        "failClosed": true,
+        "timeout": 15
+      }
+    ],
     "afterFileEdit": [
       {
         "command": ".cursor/hooks/ruff-after-edit.py",
         "timeout": 20
-      },
-      {
-        "command": "python3 .cursor/hooks/complexity-guard.py",
-        "timeout": 15
       }
     ],
     "postToolUse": [
       {
         "command": "python3 .cursor/hooks/complexity-guard.py",
-        "matcher": "Write|StrReplace|TabWrite",
+        "matcher": "TabWrite",
         "timeout": 15
       }
     ]
