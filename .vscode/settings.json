@@ -1,0 +1,15 @@
+{
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit",
+      "source.organizeImports": "never"
+    }
+  },
+  "ruff.nativeServer": "on",
+  "ruff.configuration": "pyproject.toml",
+  "flake8.enable": false,
+  "pylint.enabled": false
+}

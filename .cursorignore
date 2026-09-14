@@ -1,0 +1,15 @@
+# Parent ~/Projects/.cursorignore ignores *.md, *.py, *.ts, *.json, …
+# Cursor still applies that file to this workspace (hierarchical ignore).
+# Negate so Agent Read/Write can edit this repo.
+
+!*.md
+!*.py
+!*.toml
+!*.json
+!*.example
+!docs/
+!docs/**
+!src/
+!src/**
+!tests/
+!tests/**
