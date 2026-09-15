@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import Send
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import PlanDecision, Topic
+from exact.models import ExactState, PlanDecision, Topic
 from exact.usage import StructuredOutputError, invoke_structured
+
+type ResearchRoute = Literal["write_report"] | list[Send]
 
 
 def _planned_queries(
@@ -20,7 +24,7 @@ def _planned_queries(
     return queries
 
 
-def _followup_queries(raw) -> list[str]:
+def _followup_queries(raw: list) -> list[str]:
     return [q.strip() for q in raw if q and q.strip()][:2]
 
 
@@ -32,7 +36,7 @@ def _wave_queries(suggested: list[str], planned: list[str], prior: list) -> list
     return planned
 
 
-def _prior_queries(state: dict) -> list[str]:
+def _prior_queries(state: ExactState) -> list[str]:
     prior: list[str] = []
     seen: set[str] = set()
     for q in list(state.get("prior_queries") or []) + [
@@ -57,7 +61,7 @@ def _unique_topics(queries: list[str], prior: list, wave: int) -> list[dict]:
 
 
 def _plan_decision(
-    state: dict, runtime: Runtime, brief: dict, prior: list[str]
+    state: ExactState, runtime: Runtime, brief: dict, prior: list[str]
 ) -> tuple[PlanDecision, list[dict]]:
     return invoke_structured(
         runtime.model("router"),
@@ -78,7 +82,8 @@ def _plan_decision(
     )
 
 
-def plan_topics(state: dict, runtime: Runtime) -> dict:
+def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
+    """Plan up to three wave topics; prefer unused follow-ups on later waves."""
     brief = state.get("brief") or {}
     prior = _prior_queries(state)
     wave = int(state.get("iteration") or 0)
@@ -98,7 +103,7 @@ def plan_topics(state: dict, runtime: Runtime) -> dict:
         prior,
     )
     topics = _unique_topics(queries, prior, wave)
-    out = {
+    out: ExactState = {
         "topics": topics,
         "iteration": wave,
         "prior_queries": prior + [t["query"] for t in topics],
@@ -110,7 +115,8 @@ def plan_topics(state: dict, runtime: Runtime) -> dict:
     return out
 
 
-def route_research(state: dict):
+def route_research(state: ExactState) -> ResearchRoute:
+    """Fan out one ``Send`` per topic, or skip straight to write when empty."""
     topics = state.get("topics") or []
     if not topics:
         return "write_report"

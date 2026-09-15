@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from exact.config import Runtime
 from exact.intent import academic_signal
+from exact.models import ExactState
 from exact.tools.elicit import ElicitClient
 from exact.tools.elicit import dump_sources as dump_elicit
 from exact.tools.exa import ExaClient
@@ -9,7 +10,8 @@ from exact.tools.exa import dump_sources as dump_exa
 from exact.usage import tool_event
 
 
-def scout(state: dict, runtime: Runtime) -> dict:
+def scout(state: ExactState, runtime: Runtime) -> ExactState:
+    """Run Exa (and optional Elicit) scout before clarify; mint ``src_scout_*`` ids."""
     settings = runtime.settings
     query = state["initial_query"]
     hits: list[dict] = []

@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from exact import prompts
 from exact.config import Runtime, role_model_id
 from exact.intent import academic_signal
-from exact.models import ResearchBrief
+from exact.models import ExactState, ResearchBrief
 from exact.usage import StructuredOutputError, invoke_structured
 
 
@@ -17,12 +17,12 @@ def _scout_text(hits: list[dict]) -> str:
     return "\n".join(lines) or "(none)"
 
 
-def _chat_text(messages) -> str:
+def _chat_text(messages: list) -> str:
     chat = [getattr(m, "content", None) or str(m) for m in messages]
     return "\n".join(chat) or "(none)"
 
 
-def _pick_text(state: dict) -> str:
+def _pick_text(state: ExactState) -> str:
     clarification = state.get("user_clarification") or {}
     if clarification.get("kind") != "pick":
         return ""
@@ -34,7 +34,7 @@ def _pick_text(state: dict) -> str:
     return " ".join(parts)
 
 
-def _has_academic_signal(query: str, state: dict, chat: str) -> bool:
+def _has_academic_signal(query: str, state: ExactState, chat: str) -> bool:
     clarification = state.get("user_clarification") or {}
     text = clarification.get("text") or ""
     return bool(
@@ -45,7 +45,7 @@ def _has_academic_signal(query: str, state: dict, chat: str) -> bool:
     )
 
 
-def _normalize(brief: ResearchBrief, query: str, state: dict) -> ResearchBrief:
+def _normalize(brief: ResearchBrief, query: str, state: ExactState) -> ResearchBrief:
     chat = _chat_text(state.get("messages") or [])
     if brief.intent == "web" and _has_academic_signal(query, state, chat):
         brief.intent = "academic"
@@ -54,7 +54,7 @@ def _normalize(brief: ResearchBrief, query: str, state: dict) -> ResearchBrief:
     return brief
 
 
-def _fallback_brief(query: str, state: dict) -> ResearchBrief:
+def _fallback_brief(query: str, state: ExactState) -> ResearchBrief:
     intent = "academic" if _has_academic_signal(query, state, "") else "web"
     return _normalize(
         ResearchBrief(question=query, intent=intent, must_cover=[query]),
@@ -63,7 +63,8 @@ def _fallback_brief(query: str, state: dict) -> ResearchBrief:
     )
 
 
-def generate_brief(state: dict, runtime: Runtime) -> dict:
+def generate_brief(state: ExactState, runtime: Runtime) -> ExactState:
+    """Compress query, scout, and chat into the research brief."""
     query = state["initial_query"]
     try:
         brief, usage = invoke_structured(

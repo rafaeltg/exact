@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Literal
+from collections.abc import Mapping
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
-from typing_extensions import TypedDict
+
+type JsonMapping = Mapping[str, Any]
 
 
 class Source(BaseModel):
@@ -94,6 +96,8 @@ class UsageEvent(BaseModel):
 
 
 class ExactState(TypedDict, total=False):
+    """Checkpointed parent-graph state. Nested models are stored as dicts."""
+
     # Checkpointed values are serialized dicts of the Pydantic models above.
     initial_query: str
     messages: Annotated[list[AnyMessage], add_messages]
@@ -122,6 +126,8 @@ class ExactState(TypedDict, total=False):
 
 
 class ResearchPayload(TypedDict):
+    """Isolated ``research_agent`` worker input from ``Send``."""
+
     topic: dict
     brief: dict
     prior_titles: list[str]

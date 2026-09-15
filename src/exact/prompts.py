@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from exact.models import JsonMapping
+
 DECIDE_CLARIFY = """You decide if the user query needs clarification before research.
 You already have a SCOUT of web/paper hits. Prefer skipping if the query is specific enough.
 
@@ -90,7 +94,8 @@ Known sources (cite these ids only):
 """
 
 
-def findings_block(findings: list | None) -> str:
+def findings_block(findings: Sequence[JsonMapping] | None) -> str:
+    """Format finding dicts for reflect/write prompts."""
     if not findings:
         return "(none)"
     parts = []

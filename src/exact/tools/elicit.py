@@ -73,15 +73,17 @@ def _send_with_retry(fetch):
 
 
 class ElicitClient:
+    """Elicit papers search client with retry on transient HTTP status."""
+
     def __init__(
         self,
         api_key: str,
         timeout: float = 20.0,
         *,
-        post=None,
-        clock=None,
+        post: Any | None = None,
+        clock: Any | None = None,
         client: httpx.Client | None = None,
-    ):
+    ) -> None:
         self.api_key = api_key
         self.timeout = timeout
         self._post = post
@@ -117,6 +119,7 @@ class ElicitClient:
         )
 
     def search(self, query: str, num: int = 5) -> list[Source]:
+        """Search papers; returns [] when the API key is empty."""
         if not self.enabled:
             return []
         resp = _send_with_retry(lambda: self._post_once(query, num))
@@ -129,4 +132,5 @@ class ElicitClient:
 
 
 def dump_sources(sources: list[Source]) -> list[dict[str, Any]]:
+    """Serialize sources for graph state (checkpoint-friendly dicts)."""
     return [s.model_dump() for s in sources]

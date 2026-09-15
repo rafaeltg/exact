@@ -38,7 +38,8 @@ EXA_SEARCH_USD = 0.007
 EXA_HIGHLIGHTS_USD = 0.001
 
 
-def tool_event(kind: str, node: str, *, calls: int = 1) -> dict:
+def tool_event(kind: str, node: str, *, calls: int = 1) -> dict[str, Any]:
+    """Build a vendor tool-call usage event (one public client call → one event)."""
     return {"kind": kind, "node": node, "calls": calls}
 
 
@@ -49,8 +50,8 @@ def llm_event(
     model: str,
     usage: dict[str, int] | None = None,
     calls: int = 1,
-) -> dict:
-    """Build an llm usage event. `usage` holds token counts when present."""
+) -> dict[str, Any]:
+    """Build an llm usage event. ``usage`` holds token counts when present."""
     tokens = usage or {}
     return {
         "kind": "llm",
@@ -112,12 +113,12 @@ def _is_ai_message(msg: Any) -> bool:
 def invoke_structured(
     model: Any,
     schema: type[BaseModel],
-    messages: list,
+    messages: list[Any],
     *,
     node: str,
     role: str,
     model_id: str,
-) -> tuple[Any, list[dict]]:
+) -> tuple[Any, list[dict[str, Any]]]:
     """Invoke structured output; return (parsed, usage events).
 
     Prefer include_raw=True so live models expose usage_metadata. Fakes that
@@ -140,25 +141,27 @@ def invoke_structured(
 
 def invoke_text(
     model: Any,
-    messages: list,
+    messages: list[Any],
     *,
     node: str,
     role: str,
     model_id: str,
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict[str, Any]]]:
+    """Invoke a plain chat model and return (text, usage events)."""
     report = model.invoke(messages)
     text = getattr(report, "content", None) or str(report)
     return text, [_from_message(report, node=node, role=role, model=model_id)]
 
 
 def llm_events_from_messages(
-    messages: list,
+    messages: list[Any],
     *,
     node: str,
     role: str,
     model: str,
-) -> list[dict]:
-    events: list[dict] = []
+) -> list[dict[str, Any]]:
+    """Collect llm usage events from AI messages in an agent transcript."""
+    events: list[dict[str, Any]] = []
     for msg in messages or []:
         if not _is_ai_message(msg):
             continue
@@ -186,6 +189,7 @@ def llm_usd(
     cache_read: int = 0,
     cache_creation: int = 0,
 ) -> float | None:
+    """Estimate LLM USD from the dated rate table; None when the model is unknown."""
     rates = _rates_for(model)
     if rates is None:
         return None
@@ -250,7 +254,8 @@ def _fold_tool(totals: dict, kind: str, calls: int) -> None:
         totals["elicit_search"] += calls
 
 
-def aggregate(events: list[dict]) -> dict:
+def aggregate(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fold usage events into totals and estimated costs."""
     totals = _empty_totals()
     for ev in events or []:
         kind = ev.get("kind")
@@ -269,7 +274,8 @@ def aggregate(events: list[dict]) -> dict:
     return totals
 
 
-def format_usage(events: list[dict]) -> list[str]:
+def format_usage(events: list[dict[str, Any]]) -> list[str]:
+    """CLI ``## Usage`` lines; empty when there are no events."""
     if not events:
         return []
     a = aggregate(events)
@@ -299,7 +305,8 @@ def format_usage(events: list[dict]) -> list[str]:
     return lines
 
 
-def tool_counts(events: list[dict]) -> dict[str, int]:
+def tool_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    """Count vendor tool events by kind for status lines."""
     counts: dict[str, int] = {}
     for ev in events or []:
         kind = ev.get("kind")

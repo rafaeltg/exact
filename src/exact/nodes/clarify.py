@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Literal
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import ClarificationOption, ClarifyDecision, UserClarification
+from exact.models import (
+    ClarificationOption,
+    ClarifyDecision,
+    ExactState,
+    JsonMapping,
+    UserClarification,
+)
 from exact.usage import StructuredOutputError, invoke_structured
+
+type DecideRoute = Literal["ask_user", "generate_brief"]
+type AskRoute = Literal["decide_clarify", "generate_brief"]
 
 
 def _scout_block(hits: list[dict]) -> str:
@@ -43,15 +55,16 @@ def _from_text(text: str, options: list[dict]) -> UserClarification:
     return UserClarification(kind="text", text=text)
 
 
-def parse_resume(raw, options: list[dict]) -> UserClarification:
+def parse_resume(raw: object, options: Sequence[JsonMapping]) -> UserClarification:
+    """Parse an interrupt resume value into skip, pick, or free-text clarification."""
     if raw is None or raw == "":
         return UserClarification(kind="skip")
     if isinstance(raw, dict):
         return _from_dict(raw)
-    return _from_text(str(raw).strip(), options)
+    return _from_text(str(raw).strip(), list(options))
 
 
-def _clarify_cap(state: dict, default: int = 3) -> int:
+def _clarify_cap(state: ExactState, default: int = 3) -> int:
     return int(state.get("max_clarify_turns") or default)
 
 
@@ -72,8 +85,8 @@ def _options(decision: ClarifyDecision) -> list[dict]:
 
 def _skip_clarify(
     usage: list[dict] | None = None, *, errors: list[str] | None = None
-) -> dict:
-    out: dict = {
+) -> ExactState:
+    out: ExactState = {
         "clarify_needed": False,
         "clarification_options": [],
         "usage": usage or [],
@@ -84,7 +97,7 @@ def _skip_clarify(
 
 
 def _ask_decision(
-    state: dict, runtime: Runtime, hits: list[dict]
+    state: ExactState, runtime: Runtime, hits: list[dict]
 ) -> tuple[ClarifyDecision, list[dict]]:
     return invoke_structured(
         runtime.model("router"),
@@ -103,7 +116,8 @@ def _ask_decision(
     )
 
 
-def decide_clarify(state: dict, runtime: Runtime) -> dict:
+def decide_clarify(state: ExactState, runtime: Runtime) -> ExactState:
+    """Decide whether to interrupt; skip when scout titles are not cited."""
     if state.get("skip_clarify"):
         return {"clarify_needed": False}
     turns = int(state.get("clarify_turns") or 0)
@@ -127,7 +141,8 @@ def decide_clarify(state: dict, runtime: Runtime) -> dict:
     }
 
 
-def ask_user(state: dict) -> dict:
+def ask_user(state: ExactState) -> ExactState:
+    """Interrupt for user clarification and record the resume payload."""
     options = state.get("clarification_options") or []
     raw = interrupt(
         {
@@ -152,11 +167,11 @@ def ask_user(state: dict) -> dict:
     }
 
 
-def route_after_decide(state: dict) -> str:
+def route_after_decide(state: ExactState) -> DecideRoute:
     return "ask_user" if state.get("clarify_needed") else "generate_brief"
 
 
-def route_after_ask(state: dict) -> str:
+def route_after_ask(state: ExactState) -> AskRoute:
     if (state.get("user_clarification") or {}).get("kind") == "skip":
         return "generate_brief"
     if int(state.get("clarify_turns") or 0) >= _clarify_cap(state):

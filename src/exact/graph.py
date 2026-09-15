@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from exact.config import Runtime
 from exact.models import ExactState
@@ -22,15 +24,20 @@ from exact.nodes.scout import scout
 from exact.nodes.write import write_report
 
 
-def _bind(fn, runtime: Runtime):
-    def node(state):
+def _bind(
+    fn: Callable[..., ExactState], runtime: Runtime
+) -> Callable[[Any], ExactState]:
+    def node(state: Any) -> ExactState:
         return fn(state, runtime)
 
     node.__name__ = fn.__name__
     return node
 
 
-def build_graph(runtime: Runtime, checkpointer: Any | None = None):
+def build_graph(
+    runtime: Runtime, checkpointer: Any | None = None
+) -> CompiledStateGraph:
+    """Compile the scout → clarify → research → write → audit graph."""
     g = StateGraph(ExactState)
     g.add_node("scout", _bind(scout, runtime))
     g.add_node("decide_clarify", _bind(decide_clarify, runtime))

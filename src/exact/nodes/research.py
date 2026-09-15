@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import Finding, Source
+from exact.models import ExactState, Finding, ResearchPayload, Source
 from exact.tools.elicit import ElicitClient
 from exact.tools.exa import ExaClient
 from exact.usage import (
@@ -189,7 +189,9 @@ def _gap_kind(bag: _Bag) -> str:
     return "no sources"
 
 
-def _empty_finding(topic_id: str, errors: list[str], gap: str, usage: list) -> dict:
+def _empty_finding(
+    topic_id: str, errors: list[str], gap: str, usage: list
+) -> ExactState:
     finding = Finding(topic_id=topic_id, gaps=[gap], claims=[], source_ids=[])
     return {
         "sources": [],
@@ -199,7 +201,9 @@ def _empty_finding(topic_id: str, errors: list[str], gap: str, usage: list) -> d
     }
 
 
-def _prune(runtime: Runtime, topic_id: str, brief: dict, collected, notes, errors):
+def _prune(
+    runtime: Runtime, topic_id: str, brief: dict, collected, notes, errors
+) -> ExactState:
     model_id = role_model_id(runtime.settings, "compress")
     try:
         finding, usage = invoke_structured(
@@ -295,7 +299,8 @@ def _run_agent(runtime: Runtime, tools: _Tools, query: str, brief: dict, prior) 
     )
 
 
-def research_agent(state: dict, runtime: Runtime) -> dict:
+def research_agent(state: ResearchPayload, runtime: Runtime) -> ExactState:
+    """Isolated worker: search, prune to a Finding, never return raw tool I/O."""
     settings = runtime.settings
     topic = state["topic"]
     brief = state.get("brief") or {}

@@ -143,7 +143,16 @@ def _item_snippet(item) -> str:
 
 
 class ExaClient:
-    def __init__(self, api_key: str, timeout: float = 20.0, *, sdk=None, clock=None):
+    """Exa search/highlights client with soft timeout and one retry."""
+
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 20.0,
+        *,
+        sdk: Any | None = None,
+        clock: Any | None = None,
+    ) -> None:
         self.api_key = api_key
         self.timeout = timeout
         self._client = sdk
@@ -172,6 +181,8 @@ class ExaClient:
     def search(
         self, query: str, num: int = 5, *, category: str | None = None
     ) -> list[Source]:
+        """Search Exa; optional ``people`` / ``company`` category."""
+
         def fetch():
             kwargs: dict[str, Any] = {"num_results": num, "highlights": True}
             if category in ("people", "company"):
@@ -181,6 +192,7 @@ class ExaClient:
         return self._map(_invoke(fetch, self.timeout), "")
 
     def highlights(self, url: str) -> list[Source]:
+        """Fetch highlight snippets for a known URL."""
         result = _invoke(
             lambda: self._exa().get_contents([url], highlights=True), self.timeout
         )
@@ -188,4 +200,5 @@ class ExaClient:
 
 
 def dump_sources(sources: list[Source]) -> list[dict[str, Any]]:
+    """Serialize sources for graph state (checkpoint-friendly dicts)."""
     return [s.model_dump() for s in sources]

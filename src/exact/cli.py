@@ -120,7 +120,8 @@ def _sqlite_saver(path: str) -> SqliteSaver:
     return SqliteSaver(conn)
 
 
-def thread_config(thread_id: str) -> dict:
+def thread_config(thread_id: str) -> dict[str, Any]:
+    """LangGraph runnable config for a SQLite-backed CLI thread."""
     return {"configurable": {"thread_id": thread_id, "max_concurrency": 3}}
 
 
@@ -151,6 +152,7 @@ def main(
     read_reply: Callable[[], str] | None = None,
     new_id: Callable[[], str] | None = None,
 ) -> int:
+    """Run one research query; return 1 when dangling citations remain."""
     args = _parse_argv(argv)
     runtime = runtime or Runtime.from_env()
     saver = checkpointer or _sqlite_saver(runtime.settings.exact_db)

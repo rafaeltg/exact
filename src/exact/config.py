@@ -10,7 +10,7 @@ from langchain.chat_models import init_chat_model
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-Role = Literal["router", "research", "compress", "write"]
+type Role = Literal["router", "research", "compress", "write"]
 
 ROLES: tuple[Role, ...] = ("router", "research", "compress", "write")
 
@@ -61,17 +61,20 @@ def _model_leaf(model: str) -> str:
 
 
 def uses_reasoning_effort(model: str) -> bool:
+    """True for GPT-5/6 ids that accept ``reasoning_effort``."""
     leaf = _model_leaf(model)
     return leaf.startswith("gpt-5") or leaf.startswith("gpt-6")
 
 
 def is_anthropic_model(model: str) -> bool:
+    """True for ``anthropic:`` prefixes or Claude leaf ids."""
     if model.startswith("anthropic:"):
         return True
     return _model_leaf(model).startswith("claude")
 
 
 def role_model_id(settings: Settings, role: Role) -> str:
+    """Resolve the chat model id for ``role``, falling back to ``exact_model``."""
     override = (getattr(settings, _ROLE_MODEL_FIELDS[role]) or "").strip()
     return override or settings.exact_model
 
@@ -83,6 +86,7 @@ def role_max_tokens(settings: Settings, role: Role) -> int:
 def chat_kwargs(
     settings: Settings, model: str, role: Role = "research"
 ) -> dict[str, Any]:
+    """Build ``init_chat_model`` kwargs for temperature, tokens, and thinking."""
     kwargs: dict[str, Any] = {
         "temperature": settings.exact_temperature,
         "max_tokens": role_max_tokens(settings, role),
@@ -122,11 +126,13 @@ def _build_role_llms(settings: Settings) -> dict[str, Any]:
 
 @lru_cache
 def get_settings() -> Settings:
+    """Load ``.env`` once and return cached settings."""
     load_dotenv()
     return Settings()
 
 
 def require_live_keys(settings: Settings) -> None:
+    """Exit the process when required live API keys are missing."""
     if not settings.exa_api_key:
         raise SystemExit("EXA_API_KEY is required")
     if not settings.openai_api_key and not settings.anthropic_api_key:
@@ -135,15 +141,19 @@ def require_live_keys(settings: Settings) -> None:
 
 @dataclass
 class Runtime:
+    """Injected settings, default LLM, and optional client/LLM extras."""
+
     settings: Settings
     llm: Any
-    extras: dict = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=dict)
 
-    def model(self, role: Role):
+    def model(self, role: Role) -> Any:
+        """Return the per-role chat model, or ``llm`` when unset."""
         return (self.extras.get("llms") or {}).get(role) or self.llm
 
     @classmethod
     def from_env(cls) -> Runtime:
+        """Build a live runtime from environment settings and role LLMs."""
         settings = get_settings()
         require_live_keys(settings)
         os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)

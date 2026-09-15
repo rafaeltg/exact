@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from exact.models import JsonMapping
 from exact.usage import tool_counts
 
 
 def format_update(node: str, update: Any) -> list[str]:
-    """Turn a LangGraph `stream_mode=updates` item into CLI status lines."""
+    """Turn a LangGraph ``stream_mode=updates`` item into CLI status lines."""
     if str(node).startswith("__"):
         return []
     data = update if isinstance(update, dict) else {}
@@ -16,7 +18,7 @@ def format_update(node: str, update: Any) -> list[str]:
     return [f"[{node}]"]
 
 
-def format_plan(topics: list[dict], *, wave: int | None = None) -> list[str]:
+def format_plan(topics: Sequence[JsonMapping], *, wave: int | None = None) -> list[str]:
     n = len(topics)
     label = f"wave {wave}" if wave is not None else "next"
     noun = "topic" if n == 1 else "topics"
