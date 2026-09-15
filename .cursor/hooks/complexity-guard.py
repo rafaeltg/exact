@@ -77,7 +77,7 @@ Functions = dict[str, dict[str, dict[str, int]]]
 
 # The gate mode refuses an older interpreter. Matches `target-version` in
 # pyproject.toml: the repo uses syntax that earlier pythons cannot parse.
-_MIN_GATE_PYTHON = (3, 11)
+_MIN_GATE_PYTHON = (3, 12)
 
 MAX_COMPLEXITY = 10
 MAX_FUNCTION_LINES = 40
@@ -133,7 +133,7 @@ _BRANCH_NODES = (
     ast.ExceptHandler,
     ast.Assert,
 )
-# getattr keeps the script running on host pythons older than 3.10/3.11.
+# getattr keeps the script running on host pythons older than 3.12.
 _MATCH_CASE = getattr(ast, "match_case", None)
 _NESTING_NODES = tuple(
     node
@@ -721,7 +721,7 @@ def _require_gate_interpreter() -> None:
     """Refuse a gate run on an interpreter older than the project target.
 
     Two interpreters only measure the same numbers while they parse the
-    same syntax. This repo targets python 3.11. An older host silently
+    same syntax. This repo targets python 3.12. An older host silently
     drops every function it cannot parse. The gate then reports a clean
     tree. Failing loud here is the difference between a missed breach and
     a silent pass.

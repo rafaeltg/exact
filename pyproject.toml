@@ -3,7 +3,7 @@ name = "exact"
 version = "0.2.0"
 description = "Open Deep Research agent (Exa + Elicit, LangGraph)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "langgraph>=0.4.0",
   "langchain>=1.0.0",
@@ -39,7 +39,7 @@ testpaths = ["tests"]
 pythonpath = ["src", "."]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 src = ["src", "tests", ".cursor/hooks"]
 

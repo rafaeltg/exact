@@ -38,7 +38,7 @@ If you change topology, bounds, tools, or citation rules, update `docs/spec.md` 
 
 ## Code
 
-- Python 3.11+, `src/exact` layout, `from __future__ import annotations`
+- Python 3.12+, `src/exact` layout, `from __future__ import annotations`
 - Inject `Runtime` (settings + llm + `extras` for clients). Tests use `tests/fakes.py` — no live network in pytest
 - Ruff is lint + format. Match existing style: double quotes, 88 columns, isort with `exact` first-party
 - Broad `except Exception` is allowed only at vendor/tool boundaries (`# noqa: BLE001`)

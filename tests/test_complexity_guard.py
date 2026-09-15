@@ -821,7 +821,7 @@ def test_gate_refuses_an_interpreter_older_than_the_project_target(
         guard._require_gate_interpreter()
 
     assert excinfo.value.code == 1
-    assert "need python >= 3.11" in capsys.readouterr().err
+    assert "need python >= 3.12" in capsys.readouterr().err
 
 
 def test_gate_accepts_the_running_interpreter() -> None:

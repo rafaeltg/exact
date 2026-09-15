@@ -103,8 +103,9 @@ Do not invent mypy/`type: ignore` policy the repo never configured. Do not leave
 
 ## Language
 
-- Obey `requires-python` in `pyproject.toml` (this repo: 3.11+)
+- Obey `requires-python` in `pyproject.toml` (this repo: 3.12+)
 - Use `X | None`, not `Optional[X]`; use `list[str]`, not `List[str]`
+- Prefer PEP 695 `type` aliases over assignment aliases when naming a reusable type
 - Use `@override` on every method that implements a Protocol or overrides a base — omitting it is forbidden
 
 ## Naming — required

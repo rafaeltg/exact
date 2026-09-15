@@ -6,7 +6,7 @@ Authoritative. Ground truth is `pyproject.toml` and `AGENTS.md`. New and changed
 
 ```toml
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]

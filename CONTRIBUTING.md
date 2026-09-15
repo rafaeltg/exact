@@ -10,7 +10,7 @@ graph contract stable. Contract: [docs/spec.md](docs/spec.md). Architecture:
 
 Prerequisites:
 
-- Python 3.11 or newer
+- Python 3.12 or newer
 - [uv](https://docs.astral.sh/uv/)
 
 ```bash
@@ -109,7 +109,7 @@ clean.
 
 ## 6. Conventions
 
-- **Python:** 3.11+, `src/exact` layout, `from __future__ import annotations`
+- **Python:** 3.12+, `src/exact` layout, `from __future__ import annotations`
   in every module.
 - **Formatting / lint:** Ruff (`ruff format`, `ruff check`). Double quotes,
   88 columns, isort with `exact` as first-party. Config is in
