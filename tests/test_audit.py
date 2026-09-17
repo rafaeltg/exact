@@ -40,6 +40,20 @@ def test_multiple_dangling_citations_are_sorted():
     assert dangling == ["src_a", "src_b"]
 
 
+def test_two_ids_in_one_bracket_each_resolve():
+    report, dangling = audit_report(
+        "Adoption grew [src_t0_1_1, src_t0_1_2].",
+        [{"id": "src_t0_1_1"}, {"id": "src_t0_1_2"}],
+    )
+    assert dangling == []
+    assert "## Audit" not in report
+
+
+def test_grouped_bracket_reports_only_the_missing_id():
+    _, dangling = audit_report("Grew [src_a src_b].", [{"id": "src_a"}])
+    assert dangling == ["src_b"]
+
+
 def test_source_without_id_does_not_resolve_a_citation():
     _, dangling = audit_report("Hi [src_t0_1_1].", [{"title": "Source A"}])
     assert dangling == ["src_t0_1_1"]
