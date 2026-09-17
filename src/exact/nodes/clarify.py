@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
 from exact import prompts
@@ -105,7 +105,9 @@ def _ask_decision(
         [
             SystemMessage(
                 content=prompts.DECIDE_CLARIFY.format(
-                    query=state["initial_query"], scout=_scout_block(hits)
+                    query=state["initial_query"],
+                    scout=_scout_block(hits),
+                    chat=prompts.chat_block(state.get("messages")),
                 )
             ),
             HumanMessage(content="Decide whether to clarify."),
@@ -144,9 +146,10 @@ def decide_clarify(state: ExactState, runtime: Runtime) -> ExactState:
 def ask_user(state: ExactState) -> ExactState:
     """Interrupt for user clarification and record the resume payload."""
     options = state.get("clarification_options") or []
+    question = state.get("clarify_question") or "Clarify the research angle."
     raw = interrupt(
         {
-            "question": state.get("clarify_question") or "Clarify the research angle.",
+            "question": question,
             "options": options,
             "scout_preview": [
                 h.get("title") for h in (state.get("scout_hits") or [])[:5]
@@ -162,7 +165,8 @@ def ask_user(state: ExactState) -> ExactState:
         "clarify_turns": turns,
         "clarify_needed": needed,
         "messages": [
-            HumanMessage(content=f"User clarification ({parsed.kind}): {note}")
+            AIMessage(content=question),
+            HumanMessage(content=f"User clarification ({parsed.kind}): {note}"),
         ],
     }
 

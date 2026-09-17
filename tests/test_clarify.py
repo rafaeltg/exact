@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import ValidationError
 
 from exact.config import Settings
@@ -157,6 +157,45 @@ def test_decide_clarify_still_asks_after_two_turns():
     assert out["clarify_question"] == "Scout found Source A. Focus on mechanisms?"
     prompt = llm.with_structured_output(ClarifyDecision).last_messages[0].content
     assert "Source A" in prompt
+
+
+def test_decide_clarify_prompt_carries_the_user_answer():
+    llm = FakeLLM(
+        clarify=ClarifyDecision(
+            needed=True,
+            question="Scout found Source A. Focus on mechanisms?",
+            options=[ClarificationOption(id="opt_1", label="Mechanisms")],
+        )
+    )
+    decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "skip_clarify": False,
+            "clarify_turns": 1,
+            "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
+            "messages": [
+                HumanMessage(content="User clarification (text): only 2026 trials")
+            ],
+        },
+        runtime(llm=llm),
+    )
+    prompt = llm.with_structured_output(ClarifyDecision).last_messages[0].content
+    assert "only 2026 trials" in prompt
+
+
+def test_decide_clarify_prompt_marks_an_empty_clarify_thread():
+    llm = FakeLLM()
+    decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "skip_clarify": False,
+            "clarify_turns": 0,
+            "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
+        },
+        runtime(llm=llm),
+    )
+    prompt = llm.with_structured_output(ClarifyDecision).last_messages[0].content
+    assert "Clarification so far:\n(none)" in prompt
 
 
 def test_needed_true_question_without_scout_title_does_not_interrupt():
@@ -409,3 +448,45 @@ def test_bounds_defaults_match_spec():
     assert fields["max_tool_rounds"].default == 4
     assert fields["max_hits"].default == 5
     assert fields["http_timeout"].default == 20.0
+
+
+def test_router_question_wording_does_not_decide_the_brief_intent():
+    llm = FakeLLM(
+        brief=ResearchBrief(question="What is X?", intent="web", must_cover=["X"])
+    )
+    out = generate_brief(
+        {
+            "initial_query": "What is X?",
+            "scout_hits": [],
+            "messages": [
+                AIMessage(content="Scout found A trial of X. Which angle?"),
+                HumanMessage(content="User clarification (text): the 2026 rollout"),
+            ],
+            "user_clarification": {"kind": "text", "text": "the 2026 rollout"},
+        },
+        runtime(llm=llm),
+    )
+    assert out["brief"]["intent"] == "web"
+
+
+def test_an_earlier_clarify_turn_still_promotes_the_brief_to_academic():
+    llm = FakeLLM(
+        brief=ResearchBrief(question="What is X?", intent="web", must_cover=["X"])
+    )
+    out = generate_brief(
+        {
+            "initial_query": "What is X?",
+            "scout_hits": [],
+            "messages": [
+                AIMessage(content="Which angle?"),
+                HumanMessage(
+                    content="User clarification (text): only peer-reviewed trials"
+                ),
+                AIMessage(content="Which period?"),
+                HumanMessage(content="User clarification (text): the 2026 rollout"),
+            ],
+            "user_clarification": {"kind": "text", "text": "the 2026 rollout"},
+        },
+        runtime(llm=llm),
+    )
+    assert out["brief"]["intent"] == "academic"

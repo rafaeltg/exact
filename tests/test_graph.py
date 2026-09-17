@@ -190,6 +190,12 @@ def test_same_thread_id_continues_after_interrupt():
     snap = app.get_state(config)
     assert snap.next == ()
     assert result["user_clarification"]["kind"] == "skip"
+    # The clarify thread holds the question asked and the answer given, so a
+    # later decide_clarify turn can see both.
+    assert (
+        result["messages"][-2].content
+        == "Scout found Source A. Focus on mechanisms or outcomes?"
+    )
     assert result["messages"][-1].content == "User clarification (skip): skip"
     assert not any(isinstance(m, ToolMessage) for m in result["messages"])
     assert result["final_report"]

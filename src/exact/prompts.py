@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from exact.models import JsonMapping
 
@@ -10,11 +11,16 @@ You already have a SCOUT of web/paper hits. Prefer skipping if the query is spec
 Only ask if the query is ambiguous (audience, time range, which entity, web vs academic).
 If you ask, the question MUST mention at least one scout title. Offer 2-4 angles drawn from hits.
 If scout is empty, you may ask a generic narrowing question.
+Read the clarification chat below. If the user already answered, do NOT ask the same
+question again: skip unless a new ambiguity remains that the answer did not settle.
 
 Query: {query}
 
 Scout:
 {scout}
+
+Clarification so far:
+{chat}
 """
 
 BRIEF = """Write a focused research brief. This is the north star for later research.
@@ -92,6 +98,12 @@ Findings:
 Known sources (cite these ids only):
 {bib}
 """
+
+
+def chat_block(messages: Sequence[Any] | None) -> str:
+    """Format the clarify thread for the decide and brief prompts."""
+    chat = [getattr(m, "content", None) or str(m) for m in messages or []]
+    return "\n".join(chat) or "(none)"
 
 
 def findings_block(findings: Sequence[JsonMapping] | None) -> str:

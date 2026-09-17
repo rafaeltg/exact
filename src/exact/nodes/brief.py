@@ -17,11 +17,6 @@ def _scout_text(hits: list[dict]) -> str:
     return "\n".join(lines) or "(none)"
 
 
-def _chat_text(messages: list) -> str:
-    chat = [getattr(m, "content", None) or str(m) for m in messages]
-    return "\n".join(chat) or "(none)"
-
-
 def _pick_text(state: ExactState) -> str:
     clarification = state.get("user_clarification") or {}
     if clarification.get("kind") != "pick":
@@ -34,20 +29,34 @@ def _pick_text(state: ExactState) -> str:
     return " ".join(parts)
 
 
-def _has_academic_signal(query: str, state: ExactState, chat: str) -> bool:
+def _user_chat(state: ExactState) -> str:
+    """The user-authored side of the clarify thread.
+
+    ``user_clarification`` is a LastValue channel, so it holds the latest turn
+    only. The thread keeps every turn, but it also holds the question the
+    router asked; that wording must not decide the intent.
+    """
+    return "\n".join(
+        str(getattr(m, "content", "") or "")
+        for m in state.get("messages") or []
+        if getattr(m, "type", None) == "human"
+    )
+
+
+def _has_academic_signal(query: str, state: ExactState) -> bool:
+    """Spec §5: query, clarification text, or a picked option only."""
     clarification = state.get("user_clarification") or {}
     text = clarification.get("text") or ""
     return bool(
         academic_signal(query)
         or academic_signal(text)
         or academic_signal(_pick_text(state))
-        or academic_signal(chat)
+        or academic_signal(_user_chat(state))
     )
 
 
 def _normalize(brief: ResearchBrief, query: str, state: ExactState) -> ResearchBrief:
-    chat = _chat_text(state.get("messages") or [])
-    if brief.intent == "web" and _has_academic_signal(query, state, chat):
+    if brief.intent == "web" and _has_academic_signal(query, state):
         brief.intent = "academic"
     if not brief.must_cover:
         brief.must_cover = [brief.question or query]
@@ -55,7 +64,7 @@ def _normalize(brief: ResearchBrief, query: str, state: ExactState) -> ResearchB
 
 
 def _fallback_brief(query: str, state: ExactState) -> ResearchBrief:
-    intent = "academic" if _has_academic_signal(query, state, "") else "web"
+    intent = "academic" if _has_academic_signal(query, state) else "web"
     return _normalize(
         ResearchBrief(question=query, intent=intent, must_cover=[query]),
         query,
@@ -75,7 +84,7 @@ def generate_brief(state: ExactState, runtime: Runtime) -> ExactState:
                     content=prompts.BRIEF.format(
                         query=query,
                         scout=_scout_text(state.get("scout_hits") or []),
-                        chat=_chat_text(state.get("messages") or []),
+                        chat=prompts.chat_block(state.get("messages")),
                     )
                 ),
                 HumanMessage(content="Produce the brief."),
