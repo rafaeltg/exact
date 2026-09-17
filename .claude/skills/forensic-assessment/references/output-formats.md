@@ -1,6 +1,6 @@
 # Output Formats
 
-Structured formats for artifact-assessment deliverables. `/forensic-review` writes the FINDINGS_REPORT to `.claude/artifacts/forensic-review/`; the PATCH_PLAN shape below is what a Plan-Mode session should produce once findings are accepted (see that command's Phase 8).
+Structured formats for artifact-assessment deliverables. `/forensic-review` writes the FINDINGS_REPORT to `.claude/artifacts/forensic-review/`; the PATCH_PLAN shape below is what a Plan-Mode session should produce once findings are accepted (see that command's Phase 7).
 
 ## FINDINGS_REPORT
 
@@ -67,7 +67,7 @@ deployment section and 3 major completeness gaps in error handling. 12 findings 
 
 ## PATCH_PLAN
 
-Produced inside Plan Mode (the plan file itself), not by the command directly — see `/forensic-review` Phase 8.
+Produced inside Plan Mode (the plan file itself), not by the command directly — see `/forensic-review` Phase 7.
 
 ```markdown
 ## Patch Plan: {artifact name}
