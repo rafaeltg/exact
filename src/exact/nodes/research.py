@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -86,6 +88,12 @@ class _Bag:
         self.notes: list[str] = []
         self.usage: list[dict] = []
         self.saw_hits = False
+        # ToolNode runs the tool calls of one turn in parallel threads.
+        self.lock = threading.Lock()
+
+    def urls(self) -> set[str]:
+        with self.lock:
+            return {s.get("url") for s in self.collected if s.get("url")}
 
     def note(self, name: str, args: dict) -> None:
         self.notes.append(_call_note(name, args))
@@ -93,10 +101,10 @@ class _Bag:
     def ingest(self, found: list[Source]) -> str:
         if found:
             self.saw_hits = True
-        minted = _mint(
-            self.topic_id, _drop_prior(found, self.prior), len(self.collected) + 1
-        )
-        self.collected.extend(minted)
+        fresh = _drop_prior(found, self.prior)
+        with self.lock:
+            minted = _mint(self.topic_id, fresh, len(self.collected) + 1)
+            self.collected.extend(minted)
         return _compact_sources(minted)
 
     def call(self, label: str, fetch) -> str:
@@ -142,7 +150,12 @@ class _Tools:
         )
 
     def exa_highlights(self, url: str) -> str:
-        """Get query-relevant highlights for a URL via Exa."""
+        """Get query-relevant highlights for a URL already retrieved."""
+        if url not in self.bag.urls():
+            return (
+                "exa_highlights refused: url is not a retrieved source. "
+                "Call it only with a url from the search results above."
+            )
         self.bag.note("exa_highlights", {"url": url})
         return self.bag.call("exa_highlights", lambda: self.exa.highlights(url))
 

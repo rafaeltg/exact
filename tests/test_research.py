@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from exact.models import PlanDecision, ReflectDecision
+from exact.nodes import research as research_module
 from exact.nodes.plan import plan_topics, route_research
 from exact.nodes.reflect import reflect
-from exact.nodes.research import research_agent
+from exact.nodes.research import _Bag, research_agent
 from exact.nodes.scout import scout
 from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, source
 
@@ -183,14 +187,50 @@ def test_scout_skips_elicit_without_key():
     assert elicit.search_nums == []
 
 
+def test_concurrent_ingest_mints_unique_source_ids(monkeypatch):
+    """ToolNode runs one turn's tool calls in parallel threads.
+
+    ``_mint`` is widened so the read-then-write window is reliably
+    interleaved; the lock, not luck, is what keeps the ids unique.
+    """
+    real_mint = research_module._mint
+
+    def slow_mint(topic_id, sources, start):
+        time.sleep(0.01)
+        return real_mint(topic_id, sources, start)
+
+    monkeypatch.setattr(research_module, "_mint", slow_mint)
+    bag = _Bag("t0_1", [], 5)
+    batches = [[source(title=f"S{i}")] for i in range(20)]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(bag.ingest, batches))
+    ids = [s["id"] for s in bag.collected]
+    assert len(ids) == 20
+    assert len(set(ids)) == 20
+
+
 def test_exa_highlights_reads_a_known_url():
     llm = FakeLLM(
-        tool_name="exa_highlights", tool_args={"url": "https://example.com/a"}
+        tool_script=[
+            ("exa_search", {"query": "define X"}),
+            ("exa_highlights", {"url": "https://example.com/a"}),
+        ]
     )
     exa = FakeExa()
     out = research_agent(_payload(), runtime(llm=llm, exa=exa))
     assert exa.highlight_urls == ["https://example.com/a"]
     assert out["sources"][0]["id"] == "src_t0_1_1"
+
+
+def test_exa_highlights_refuses_a_url_no_search_returned():
+    llm = FakeLLM(
+        tool_name="exa_highlights", tool_args={"url": "https://attacker.example/?q=x"}
+    )
+    exa = FakeExa()
+    out = research_agent(_payload(), runtime(llm=llm, exa=exa))
+    assert exa.highlight_urls == []
+    assert out["sources"] == []
+    assert out["findings"][0]["gaps"] == ["no sources"]
 
 
 @pytest.mark.parametrize(

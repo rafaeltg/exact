@@ -118,12 +118,20 @@ class FakeBound:
         tool_name: str = "exa_search",
         tool_args: dict | None = None,
         max_calls: int = 1,
+        script: list[tuple[str, dict]] | None = None,
     ):
         self.owner = owner
         self.tools = tools
         self.tool_name = tool_name
         self.tool_args = tool_args or {"query": "test"}
-        self.max_calls = max_calls
+        self.script = script or []
+        self.max_calls = len(self.script) or max_calls
+
+    def _step(self, round_no: int) -> tuple[str, dict]:
+        """One (tool name, args) pair per round; ``script`` wins when set."""
+        if self.script:
+            return self.script[round_no - 1]
+        return self.tool_name, self.tool_args
 
     @property
     def calls(self) -> int:
@@ -135,13 +143,14 @@ class FakeBound:
         self.owner.last_tool_loop_messages = list(messages)
         meta = _usage_meta(self.owner.tool_usage_metadata)
         if local.calls <= self.max_calls:
+            name, args = self._step(local.calls)
             return AIMessage(
                 content="",
                 usage_metadata=meta,
                 tool_calls=[
                     {
-                        "name": self.tool_name,
-                        "args": self.tool_args,
+                        "name": name,
+                        "args": args,
                         "id": f"call_{local.calls}",
                         "type": "tool_call",
                     }
@@ -163,6 +172,7 @@ class FakeLLM:
         tool_name: str = "exa_search",
         tool_args: dict | None = None,
         tool_rounds: int = 1,
+        tool_script: list[tuple[str, dict]] | None = None,
         usage_metadata: dict | None = None,
         tool_usage_metadata: dict | None = None,
         fail_structured: bool = False,
@@ -186,6 +196,7 @@ class FakeLLM:
         self.tool_name = tool_name
         self.tool_args = tool_args
         self.tool_rounds = tool_rounds
+        self.tool_script = tool_script
         self.usage_metadata = usage_metadata
         self.tool_usage_metadata = tool_usage_metadata
         self.fail_structured = fail_structured
@@ -215,6 +226,7 @@ class FakeLLM:
             tool_name=self.tool_name,
             tool_args=self.tool_args,
             max_calls=self.tool_rounds,
+            script=self.tool_script,
         )
         return self.bound
 
