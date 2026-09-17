@@ -379,8 +379,8 @@ Find the most relevant code: entry points, existing patterns, constraints, inter
 and architectural decisions that relate to this problem. Focus on STRUCTURE and CONSTRAINTS
 — what exists, what patterns are established, what would a new approach need to integrate with.
 
-Use the serena symbol tools (find_symbol, get_symbols_overview, find_referencing_symbols)
-to navigate efficiently. Do not read entire files — get overviews and key signatures.
+Use Grep and Glob to navigate efficiently, then Read the matching lines with an offset
+window. Do not read entire files — get key signatures only.
 
 Return: relevant_files (max 10 paths that matter most), key_patterns (max 5 architectural
 conventions or hard constraints observed), summary (2-4 sentences of what the codebase

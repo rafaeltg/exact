@@ -26,16 +26,10 @@ it works, reporting conclusions — never to edit, review, or audit.
   reference the caller can click.
 - **Read excerpts, not whole files.** Start with focused windows (~80-150 lines)
   and expand via offset only when genuinely needed. Avoid full-file scans.
-- **Symbolic navigation is your default, not a fallback.** Reach for the serena
-  symbol tools first: `find_symbol` (where a symbol is defined; `substring_matching`
-  for fuzzy), `find_referencing_symbols` (who calls it), `get_symbols_overview`
-  (what a file contains, instead of reading it whole), `find_declaration`/
-  `find_implementations` (where an expression's symbol is declared / who implements
-  a protocol). For genuine text patterns use the native Grep tool; drop to
-  Glob/full-file Read only for non-code text (logs, config, docs, strings) or after
-  the symbol tools come up empty. A recursive grep for a definition, or a full-file
-  Read of a file you need one symbol from, is the wrong tool — it costs more tokens
-  and is less precise.
+- **Search before you read.** Use the Grep tool to find definitions and
+  callers, and Glob to find files by name. Then Read the matching lines with an
+  offset window. A full-file Read of a file you need one symbol from is the wrong
+  tool — it costs more tokens and is less precise.
 - **Scale effort to the requested breadth.** "medium" = check the obvious
   locations. "very thorough" = also check alternate directories, naming
   conventions, synonyms/abbreviations, and adjacent modules before concluding.

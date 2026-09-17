@@ -6,7 +6,7 @@ description: >
   grounds every path, count and command against the tree. Writes only under .claude/artifacts/plan/<topic>/.
   Never edits src/.
 argument-hint: "<topic-slug> <spec path or spec text> [--assume \"<decision>\"]..."
-allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Skill, Agent, Task, SendMessage, mcp__serena__initial_instructions, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, Bash(git check-ignore*), Bash(date*), Bash(mkdir*)
+allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Skill, Agent, Task, SendMessage, Bash(git check-ignore*), Bash(date*), Bash(mkdir*)
 disable-model-invocation: true
 ---
 
@@ -51,8 +51,7 @@ for a single-PR change inside one session.
 
 Send ONE `spec-interrogator` subagent (the `Agent` tool; some harness versions name it `Task`).
 It runs with fresh context. Its own definition governs how it interrogates. Do not re-instruct it
-beyond the inputs and the serena-first rule. Restate that rule for every subagent that navigates
-code.
+beyond the inputs.
 
 Give it five things:
 
@@ -113,8 +112,7 @@ when the user wants the plan anyway.
 
 1. Invoke `Skill(skill="phase-slicing")`. Follow it. Do not repeat its rules here.
 2. Produce the phase list, the cross-phase contracts, and the file-ownership map. Work from
-   `contract.md`. Call `initial_instructions` and use serena when you must read code for a
-   signature the contract does not carry.
+   `contract.md`. Read the code when you must get a signature the contract does not carry.
 3. The skill sends you back when a cross-phase signature will not write. Go back to Phase 2, and
    ask about it there.
 
@@ -195,8 +193,8 @@ A plan that asserts a false fact about the tree ships a bug that no gate catches
 before anyone executes it.
 
 1. Send ONE `fs-readonly-worker` subagent (the `Agent` tool; some harness versions name it
-   `Task`) with fresh context. The prompt MUST restate the serena-first rule. The agent holds no
-   Bash and no web tools, so it verifies by reading this tree only.
+   `Task`) with fresh context. The agent holds no Bash and no web tools, so it verifies by
+   reading this tree only.
 
    Give it four paths: `<plan-path>`, `assumptions.md`, `contract.md`, and `gaps.md`. Give it the
    checklist below. **Copy the delete-on-sight list from Phase 5 into the prompt, and copy the
@@ -206,8 +204,8 @@ before anyone executes it.
    |---|---|
    | Each `Files: modify:` path exists | `Glob` |
    | Each `Files: create:` path does not exist | `Glob` |
-   | Each symbol a Do field names exists | `find_symbol` |
-   | Each call-site or caller count | `find_referencing_symbols`. **Never `make lint` output** — it does not report call sites |
+   | Each symbol a Do field names exists | `Grep` for the definition |
+   | Each call-site or caller count | `Grep` for the name. **Never `make lint` output** — it does not report call sites |
    | Each `make` target in a Verify exists | `Grep` the `Makefile` for the target |
    | Both skill Author checklists pass | Read the two `SKILL.md` files |
    | Every name matches `contract.md` | Read `contract.md` |
