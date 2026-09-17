@@ -2,5 +2,44 @@
   "attribution": {
     "commit": "",
     "pr": ""
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make -C \"${CLAUDE_PROJECT_DIR:-.}\" complexity-pre",
+            "timeout": 15,
+            "statusMessage": "Checking complexity budgets"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/post-edit.sh\"",
+            "timeout": 20,
+            "statusMessage": "Formatting edited file"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/post-bash.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking complexity budgets"
+          }
+        ]
+      }
+    ]
   }
 }
