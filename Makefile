@@ -2,6 +2,7 @@
         test test-failed \
         lint lint-fix format format-fix \
         complexity-check complexity-pre complexity-post \
+        workflows-check \
         check clean
 
 .SHELLFLAGS := -eu -o pipefail -c
@@ -127,6 +128,40 @@ complexity-pre: ## Cursor preToolUse — deny over-budget Write/StrReplace
 complexity-post: ## Cursor postToolUse — advisory complexity context
 	@$(GUARD)
 
+# ─── Workflow scripts ──────────────────────────────────────────────────
+# `.claude/workflows/*.js` run in the agent harness, not in any interpreter this
+# project ships. The check is therefore host-side and skips when node is absent.
+#
+# A bare `node --check <file>` is USELESS here: Node's automatic CJS/ESM detection
+# sees the leading `export const meta` and exits 0 on any downstream syntax error.
+# Checking the file as .mjs reports the opposite false result — these scripts use
+# top-level `return` and top-level `await`, which no module goal accepts. So
+# reproduce the runtime's own shape: neutralise the one `export` and wrap the body
+# in an async arrow, which makes both legal, then check that.
+#
+# The opening wrapper deliberately ends WITHOUT a newline, so it shares line 1 with
+# the script's own first line. That keeps node's reported line numbers matching the
+# real file. It relies on every script's line 1 staying comment-safe (all five open
+# with `// SYNC:`). A script that starts with a shebang would report a FALSE syntax
+# error — restore the newline if that ever happens.
+#
+# Scope: this catches typos only. A live Workflow run is the only real coverage.
+workflows-check: ## Syntax-check .claude/workflows/*.js (skips without node)
+	$(AT)printf '==> workflows-check\n' >&2
+	@if ! command -v node >/dev/null 2>&1; then \
+	  printf 'WARNING: node not on PATH — skipping .claude/workflows/*.js syntax check.\n' >&2; \
+	else \
+	  tmp=$$(mktemp -d); \
+	  for f in .claude/workflows/*.js; do \
+	    { printf 'const __check = async () => {'; \
+	      sed 's/^export const meta/const meta/' "$$f"; \
+	      printf '\n}\n'; } > "$$tmp/chk.mjs"; \
+	    node --check "$$tmp/chk.mjs" \
+	      || { printf 'error: syntax error in %s\n' "$$f" >&2; rm -rf "$$tmp"; exit 1; }; \
+	  done; \
+	  rm -rf "$$tmp"; \
+	fi
+
 # ─── Tests ─────────────────────────────────────────────────────────────
 test: ## Run pytest (TEST= path, K= keyword, VERBOSE=1)
 	$(AT)printf '==> test\n' >&2
@@ -137,11 +172,12 @@ test-failed: ## Re-run only previously failed tests
 	$(AT)$(PYTEST) tests --lf $(PYTEST_ARGS)
 
 # ─── Aggregate gate (AGENTS.md "Done when") ────────────────────────────
-check: ## Lint, format-check, complexity, tests
+check: ## Lint, format-check, complexity, workflow scripts, tests
 	$(AT)printf '==> check\n' >&2
 	@$(MAKE) lint
 	@$(MAKE) format
 	@$(MAKE) complexity-check
+	@$(MAKE) workflows-check
 	@$(MAKE) test
 
 # ─── Cleanup ───────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ cp .env.example .env
 # optional: ELICIT_API_KEY for academic paper search
 # set EXACT_GITHUB_USER for /commit and /create-pr (gh auth switch)
 
-# 4. Run the gate (lint + format-check + complexity + tests)
+# 4. Run the gate (lint + format-check + complexity + workflow scripts + tests)
 make check
 ```
 

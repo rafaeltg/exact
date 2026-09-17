@@ -223,3 +223,6 @@ __marimo__/
 # exact checkpointer / local DB
 *.sqlite
 *.sqlite-*
+
+# Claude Code working artifacts (plans, review reports) — not part of the repo
+.claude/artifacts/

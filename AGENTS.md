@@ -10,7 +10,8 @@ make test               # TEST=path K=expr VERBOSE=1
 make lint / lint-fix
 make format / format-fix   # FILE=path for one file
 make complexity-check
-make check              # lint + format-check + complexity + tests
+make workflows-check    # syntax-check .claude/workflows/*.js
+make check              # lint + format-check + complexity + workflow scripts + tests
 make clean
 ```
 
