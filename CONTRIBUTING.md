@@ -60,7 +60,7 @@ call Exa, Elicit, or any LLM provider from pytest.
   randomness.
 
 Authoritative test rules live in the test-design skill under
-`.cursor/skills/test-design/` (and the Claude mirror).
+`.claude/skills/test-design/`.
 
 ## 3. Pre-commit hook
 
