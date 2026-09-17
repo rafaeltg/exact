@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel
 
 
@@ -125,7 +126,12 @@ def invoke_structured(
     ignore kwargs and return a Pydantic object yield a zero-token llm event.
     """
     structured = model.with_structured_output(schema, include_raw=True)
-    result = structured.invoke(messages)
+    try:
+        result = structured.invoke(messages)
+    except OutputParserException as exc:
+        # Anthropic cannot force a tool call while thinking is on, so the
+        # model may answer in prose. That escapes the include_raw fallback.
+        raise StructuredOutputError(f"{node}: {exc}") from exc
     if isinstance(result, BaseModel):
         return result, [llm_event(node=node, role=role, model=model_id)]
     if not isinstance(result, dict):
@@ -149,7 +155,9 @@ def invoke_text(
 ) -> tuple[str, list[dict[str, Any]]]:
     """Invoke a plain chat model and return (text, usage events)."""
     report = model.invoke(messages)
-    text = getattr(report, "content", None) or str(report)
+    # ``.text`` joins only text blocks; ``.content`` may be a list of blocks
+    # (thinking + text) that no downstream string operation accepts.
+    text = str(getattr(report, "text", "") or "") or str(report)
     return text, [_from_message(report, node=node, role=role, model=model_id)]
 
 

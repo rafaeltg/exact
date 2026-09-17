@@ -48,6 +48,26 @@ def test_chat_kwargs_anthropic_enables_thinking_when_budget_set():
     assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}
 
 
+def test_chat_kwargs_thinking_forces_temperature_1():
+    settings = _settings(exact_temperature=0.0, exact_thinking_budget=1024)
+    kwargs = chat_kwargs(settings, "anthropic:claude-haiku-4-5", "router")
+    assert kwargs["temperature"] == 1
+
+
+def test_chat_kwargs_thinking_lifts_max_tokens_above_the_budget():
+    settings = _settings(exact_thinking_budget=1024, exact_max_tokens_router=1024)
+    kwargs = chat_kwargs(settings, "anthropic:claude-haiku-4-5", "router")
+    assert kwargs["max_tokens"] == 2048
+    assert kwargs["max_tokens"] > kwargs["thinking"]["budget_tokens"]
+
+
+def test_chat_kwargs_thinking_budget_leaves_non_anthropic_temperature_alone():
+    settings = _settings(exact_temperature=0.0, exact_thinking_budget=1024)
+    kwargs = chat_kwargs(settings, "openai:gpt-5.1", "router")
+    assert kwargs["temperature"] == 0.0
+    assert "thinking" not in kwargs
+
+
 def test_chat_kwargs_reads_temperature_and_max_tokens_from_settings():
     settings = _settings(exact_temperature=0.2, exact_max_tokens_research=512)
     kwargs = chat_kwargs(settings, "anthropic:claude-haiku-4-5", "research")

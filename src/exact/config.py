@@ -96,6 +96,13 @@ def chat_kwargs(
         if effort:
             kwargs["reasoning_effort"] = effort
     if settings.exact_thinking_budget > 0 and is_anthropic_model(model):
+        # Anthropic rejects any temperature but 1 while thinking is on, and
+        # requires max_tokens above budget_tokens: the budget buys thinking,
+        # the role cap still buys the reply.
+        kwargs["temperature"] = 1
+        kwargs["max_tokens"] = settings.exact_thinking_budget + role_max_tokens(
+            settings, role
+        )
         kwargs["thinking"] = {
             "type": "enabled",
             "budget_tokens": settings.exact_thinking_budget,

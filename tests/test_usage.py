@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import pytest
+from langchain_core.exceptions import OutputParserException
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
+from exact.audit import audit_report
 from exact.cli import main
+from exact.models import ResearchBrief
+from exact.nodes.clarify import decide_clarify
 from exact.nodes.research import research_agent
 from exact.nodes.scout import scout
 from exact.nodes.write import write_report
-from exact.usage import EXA_HIGHLIGHTS_USD, EXA_SEARCH_USD, aggregate, format_usage
+from exact.usage import (
+    EXA_HIGHLIGHTS_USD,
+    EXA_SEARCH_USD,
+    StructuredOutputError,
+    aggregate,
+    format_usage,
+    invoke_structured,
+    invoke_text,
+)
 from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, source
 
 
@@ -339,3 +353,81 @@ def test_format_references_empty_when_no_sources():
 
     assert format_references([]) == []
     assert format_references(None) == []
+
+
+class _BlockContentModel:
+    """Anthropic returns a block list when extended thinking is on."""
+
+    def invoke(self, messages):
+        return AIMessage(
+            content=[
+                {"type": "thinking", "thinking": "weighing the sources"},
+                {"type": "text", "text": "X is Y [src_t0_1_1]."},
+            ],
+            usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        )
+
+
+def test_invoke_text_joins_text_blocks_into_a_string():
+    text, events = invoke_text(
+        _BlockContentModel(),
+        [HumanMessage(content="Write the report.")],
+        node="write_report",
+        role="write",
+        model_id="anthropic:claude-haiku-4-5",
+    )
+    assert isinstance(text, str)
+    assert text == "X is Y [src_t0_1_1]."
+    assert "weighing the sources" not in text
+    assert events[0]["input_tokens"] == 10
+
+
+def test_write_report_with_block_content_stays_auditable():
+    report, dangling = audit_report(
+        invoke_text(
+            _BlockContentModel(),
+            [HumanMessage(content="Write the report.")],
+            node="write_report",
+            role="write",
+            model_id="anthropic:claude-haiku-4-5",
+        )[0],
+        [{"id": "src_t0_1_1"}],
+    )
+    assert dangling == []
+    assert "## Audit" not in report
+
+
+class _ThinkingProseModel:
+    """Anthropic cannot force a tool call while thinking is on."""
+
+    def with_structured_output(self, schema, **_kwargs):
+        return self
+
+    def invoke(self, messages):
+        raise OutputParserException("tool calls were not generated")
+
+
+def test_structured_output_prose_under_thinking_raises_structured_output_error():
+    with pytest.raises(StructuredOutputError):
+        invoke_structured(
+            _ThinkingProseModel(),
+            ResearchBrief,
+            [HumanMessage(content="Produce the brief.")],
+            node="generate_brief",
+            role="compress",
+            model_id="anthropic:claude-haiku-4-5",
+        )
+
+
+def test_decide_clarify_skips_when_thinking_breaks_structured_output():
+    out = decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "skip_clarify": False,
+            "clarify_turns": 0,
+            "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
+        },
+        runtime(llm=_ThinkingProseModel()),
+    )
+    assert out["clarify_needed"] is False
+    assert out["errors"]
