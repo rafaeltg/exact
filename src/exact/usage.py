@@ -223,7 +223,7 @@ def _empty_totals() -> dict:
         "cache_read": 0,
         "cache_creation": 0,
         "llm_cost": 0.0,
-        "llm_priced": True,
+        "llm_unpriced_calls": 0,
         "exa_search": 0,
         "exa_highlights": 0,
         "elicit_search": 0,
@@ -248,7 +248,7 @@ def _fold_llm(totals: dict, ev: dict, calls: int) -> None:
         cache_creation=write,
     )
     if priced is None:
-        totals["llm_priced"] = False
+        totals["llm_unpriced_calls"] += calls
         return
     totals["llm_cost"] += priced
 
@@ -277,8 +277,7 @@ def aggregate(events: list[dict[str, Any]]) -> dict[str, Any]:
         + totals["exa_highlights"] * EXA_HIGHLIGHTS_USD
     )
     totals["exa_cost"] = exa_cost
-    llm_part = totals["llm_cost"] if totals["llm_priced"] else 0.0
-    totals["total"] = exa_cost + llm_part
+    totals["total"] = exa_cost + totals["llm_cost"]
     return totals
 
 
@@ -288,10 +287,11 @@ def format_usage(events: list[dict[str, Any]]) -> list[str]:
         return []
     a = aggregate(events)
     lines = ["## Usage"]
-    llm_cost = f"${a['llm_cost']:.4f}" if a["llm_priced"] else "(unknown model)"
+    unpriced = a["llm_unpriced_calls"]
+    mark = f" + {unpriced} unpriced" if unpriced else ""
     lines.append(
         f"llm     {a['llm_calls']} calls  {a['input_tokens']} in  "
-        f"{a['output_tokens']} out   {llm_cost}"
+        f"{a['output_tokens']} out   ${a['llm_cost']:.4f}{mark}"
     )
     if a["cache_read"] or a["cache_creation"]:
         lines.append(
@@ -304,11 +304,11 @@ def format_usage(events: list[dict[str, Any]]) -> list[str]:
     lines.append(
         f"elicit  {a['elicit_search']} search                      (subscription)"
     )
-    if a["llm_priced"]:
+    if not a["llm_unpriced_calls"]:
         lines.append(f"total                                 ${a['total']:.4f}")
     else:
         lines.append(
-            f"total                                 ${a['exa_cost']:.4f}+ (llm unpriced)"
+            f"total                                 ${a['total']:.4f}+ (llm unpriced)"
         )
     return lines
 

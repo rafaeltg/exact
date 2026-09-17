@@ -91,7 +91,7 @@ def test_write_captures_cache_tokens_from_usage_metadata():
     assert out["usage"][0]["input_tokens"] == 110
 
 
-def test_format_usage_unknown_model_omits_llm_dollars():
+def test_format_usage_unknown_model_is_named_and_omitted_from_dollars():
     events = [
         {
             "kind": "llm",
@@ -105,9 +105,37 @@ def test_format_usage_unknown_model_omits_llm_dollars():
         {"kind": "exa_search", "node": "scout", "calls": 1},
     ]
     lines = format_usage(events)
-    assert "(unknown model)" in lines[1]
+    assert "$0.0000 + 1 unpriced" in lines[1]
     assert "$0.0070+" in lines[-1]
     assert "llm unpriced" in lines[-1]
+
+
+def test_format_usage_keeps_priced_calls_when_one_model_is_unpriced():
+    events = [
+        {
+            "kind": "llm",
+            "node": "decide_clarify",
+            "role": "router",
+            "model": "anthropic:claude-haiku-4-5",
+            "input_tokens": 1_000_000,
+            "output_tokens": 0,
+            "calls": 1,
+        },
+        {
+            "kind": "llm",
+            "node": "write_report",
+            "role": "write",
+            "model": "openai:gpt-5.1",
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "calls": 1,
+        },
+    ]
+    a = aggregate(events)
+    assert a["llm_cost"] == 1.0
+    assert a["llm_unpriced_calls"] == 1
+    assert a["total"] == 1.0
+    assert "llm unpriced" in format_usage(events)[-1]
 
 
 def test_format_usage_elicit_is_subscription_zero():
