@@ -52,10 +52,10 @@ Empty `EXACT_MODEL_*` still inherits `EXACT_MODEL`. `.env.example` sets every ro
 
 **Client rules** (built in `config.chat_kwargs` from Settings):
 
-- Temperature comes from `EXACT_TEMPERATURE`.
-- `max_tokens` comes from the role `EXACT_MAX_TOKENS_*` value.
+- Temperature comes from `EXACT_TEMPERATURE`, except when thinking is on.
+- `max_tokens` comes from the role `EXACT_MAX_TOKENS_*` value, except when thinking is on.
 - GPT-5 / GPT-6 model ids: pass `reasoning_effort` from `EXACT_REASONING_EFFORT` when non-empty. Default `none` keeps cost low (API default is not `none`).
-- Anthropic model ids: if `EXACT_THINKING_BUDGET` > 0, enable extended thinking with that budget. Default `0` leaves thinking off.
+- Anthropic model ids: if `EXACT_THINKING_BUDGET` > 0, enable extended thinking with that budget. Default `0` leaves thinking off. Thinking overrides the two rules above: the request uses `temperature=1` and `max_tokens = budget + role cap`, because Anthropic rejects other temperatures and needs a reply budget above the thinking budget.
 - Other models: ignore reasoning effort and thinking budget.
 
 `Runtime.from_env` builds one client per distinct model + sampling key and maps each role in `extras["llms"]`. Nodes call `runtime.model(role)`.
@@ -98,7 +98,7 @@ EXACT_MODEL_WRITE=anthropic:claude-sonnet-4-5
                                             reflect
                                           /          \
                          follow-ups and               done or
-                         iteration < 3                iteration >= 3
+                    iteration + 1 < max_iter        iteration + 1 >= max_iter
                               |                            |
                         plan_topics                  write_report
                                                      audit_citations

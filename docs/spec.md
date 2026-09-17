@@ -33,7 +33,7 @@ A run **passes** when:
 2. **Grounding floor:** at least one citation, or `uncovered` explains empty retrieval.
 3. **Honesty:** `uncovered` lists brief items findings marked as gaps.
 4. **ODR shape:** scout ran; clarify was skipped *or* grounded in scout titles; brief exists; workers were isolated; write ran once after research.
-5. **Bounds:** `clarify_turns <= 3`; `iteration <= 3`; ≤3 topics/wave; ≤4 model-call rounds/worker; ≤5 hits/tool call; tool strings into the loop ≤8000 chars.
+5. **Bounds:** `clarify_turns <= 3`; `iteration + 1 <= max_iterations` (3 waves); ≤3 topics/wave; ≤4 model-call rounds/worker; ≤5 hits/tool call; tool strings into the loop ≤8000 chars.
 6. **Resume:** same `thread_id` continues after interrupt.
 
 QA **fails** on dangling citations or exceeded bounds. The CLI exits with status `1` when `uncovered` contains a `dangling:` item. The CLI exits with status `0` when the run completes without dangling citations.
@@ -47,7 +47,7 @@ QA **fails** on dangling citations or exceeded bounds. The CLI exits with status
 | User | Human | Query; skip / pick / text on clarify turns |
 | Scout | Node, 0 LLM | Exa 5 highlights; Elicit 5 iff academic signal + key |
 | Decide-clarify | Node, router LLM | Given query + scout: skip or ask a scout-grounded question |
-| Clarifier | `interrupt()` loop | Pause; append user reply to `messages` |
+| Clarifier | `interrupt()` loop | Pause; append the question asked and the user reply to `messages` |
 | Brief writer | Node, compress LLM | Compress query + scout + clarify chat → `ResearchBrief` |
 | Planner (supervisor) | Node, router LLM | 1 topic if simple; 2–3 if compare/list/multi-entity |
 | Researcher | Isolated subgraph | Tool loop (≤4 rounds, research LLM) then prune (compress LLM) → `Finding` |
@@ -73,15 +73,19 @@ START
   → plan_topics                 # 1..3 topics; no new query → write
   → Send(research_agent)×N
   → reflect
-       ├─ follow-ups and iteration < 3 → plan_topics
+       ├─ follow-ups and iteration + 1 < max_iterations → plan_topics
        └─ else → write_report → audit_citations → END
 ```
 
 ```python
+import sqlite3
+
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import interrupt, Command, Send
 
-app = workflow.compile(checkpointer=SqliteSaver.from_conn_string("exact.sqlite"))
+conn = sqlite3.connect("exact.sqlite", check_same_thread=False)
+app = workflow.compile(checkpointer=SqliteSaver(conn))
+# from_conn_string is a context manager. Construct the saver from a connection.
 # HITL is interrupt() inside ask_user. No interrupt_before.
 ```
 
@@ -89,7 +93,7 @@ app = workflow.compile(checkpointer=SqliteSaver.from_conn_string("exact.sqlite")
 
 **`Send`:** from `plan_topics` via conditional edge. Do not invoke research workers in a Python loop.
 
-**Reflect exit:** `iteration >= 3` → write. Else LLM `{done, followups, uncovered}`. If `done` or no follow-ups → write. Else ≤2 follow-up topics, `iteration += 1`.
+**Reflect exit:** `iteration + 1 >= max_iterations` (default 3) → write. Else LLM `{done, followups, uncovered}`. If `done` or no follow-ups → write. Else ≤2 follow-up topics, `iteration += 1`.
 
 ---
 
@@ -200,7 +204,7 @@ No Firecrawl. No MCP. No Elicit Reports.
 
 ## 6. Clarification (ODR + Exa)
 
-`decide_clarify` sees `initial_query` + scout titles/snippets. Structured output:
+`decide_clarify` sees `initial_query` + scout titles/snippets + the clarify thread (`messages`), so turn 2 decides against the question already asked and the user's answer. Structured output:
 
 - `needed=false` → brief.
 - `needed=true` → one question that **cites scout titles**; optional 2–4 angles from hits; `interrupt()`.
@@ -221,9 +225,9 @@ If `needed=true` and scout hits exist, the question must contain at least one sc
 | `generate_brief` | compress | `must_cover` 1–5. Written once. |
 | `plan_topics` | router | 1–3; follow-up ≤2, no duplicate queries. Follow-up queries come from `reflect`. Do not treat them as prior. If every candidate repeats a prior query, write. |
 | `research_agent` | research + compress | ≤4 model-call rounds via `create_agent` + `ModelCallLimitMiddleware` (research) + 1 prune (compress). Isolated. Tool-loop messages use compact snippets (≤240 chars); each tool string into the loop is capped at 8000 chars; prune sees full snippets (≤1200). Tool notes are name + query/url only. Vendor exception → `gaps=["retrieval failed"]` and `errors`. Empty hits → `gaps=["no sources"]`. Prior-title drop that leaves the bag empty → `gaps=["no new sources"]`. |
-| `reflect` | router | Forced write if `iteration >= 3`. Follow-ups go to `followups`. Do not replace `topics`. |
-| `write_report` | write | Temp 0. Cite existing ids. `## Open questions`. |
-| `audit_citations` | none | Regex `[src_…]`. |
+| `reflect` | router | Forced write if `iteration + 1 >= max_iterations`. Follow-ups go to `followups`. Do not replace `topics`. |
+| `write_report` | write | Temp 0 (1 when thinking is on). Cite existing ids. `## Open questions`. |
+| `audit_citations` | none | Regex `[src_…]`. One bracket may group ids (`[src_a, src_b]`); each is checked on its own. |
 
 ---
 
@@ -252,16 +256,16 @@ Parent `messages` stay clarify-only. Research tool transcripts are never written
 | Temperature | `EXACT_TEMPERATURE` (default `0`) |
 | Output caps | `EXACT_MAX_TOKENS_ROUTER` / `_RESEARCH` / `_COMPRESS` / `_WRITE` (defaults 1024 / 1024 / 2048 / 8192) |
 | Reasoning | `EXACT_REASONING_EFFORT` (default `none`; applied only to GPT-5/6 model ids) |
-| Thinking | `EXACT_THINKING_BUDGET` (default `0` = off; Anthropic only when > 0) |
+| Thinking | `EXACT_THINKING_BUDGET` (default `0` = off; Anthropic only when > 0). When on, the request uses `temperature=1` and `max_tokens = budget + role cap`, because Anthropic rejects other temperatures and needs a reply budget above the thinking budget. Anthropic's own minimum is 1024. Thinking also stops Anthropic forcing a tool call, so a router that answers in prose raises `StructuredOutputError` and that node takes its skip or fallback path. |
 | Keys | `EXA_API_KEY` required; `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; `ELICIT_API_KEY` optional |
 | Checkpointer | SQLite `exact.sqlite` |
 | Concurrency | `max_concurrency=3` |
 | HTTP | 20s, 1 retry on timeout, 429, or 5xx. Exa has no SDK cancel; on soft timeout Exact reaps the worker thread before retry so calls do not overlap. |
-| Exit | `0` on success; `1` if `uncovered` contains `dangling:` |
+| Exit | `0` on success; `1` if `uncovered` contains `dangling:`; `1` also on CLI misuse (missing key, finished `--thread-id`), which prints a message to stderr instead of a report |
 
-`--skip-clarify` for CI. `--thread-id` to resume.
+`--skip-clarify` for CI. `--thread-id` to resume a thread that waits for an answer.
 
-If the graph interrupts for clarification, the CLI prints the question and exits. Run the CLI again with the same `--thread-id` to answer.
+If the graph interrupts for clarification, the CLI prints the question and exits. Run the CLI again with the same `--thread-id` to answer. A thread that already reached END cannot be re-run: the CLI exits with `thread already finished; use a new --thread-id`, because `sources`, `findings` and `usage` are append channels that a new seed cannot reset.
 
 `ExaClient` accepts an injected SDK. `ElicitClient` accepts an injected `post`. Tests must not call live vendors.
 
