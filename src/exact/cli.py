@@ -136,6 +136,10 @@ def _run(app, seed, config, read_reply: Callable[[], str]) -> dict:
     snap = app.get_state(config)
     if snap.next:
         return _clarify_loop(app, config, read_reply)
+    if snap.values:
+        # Append channels never reset, so a second run would merge the old
+        # sources, findings and usage into the new report.
+        raise SystemExit("thread already finished; use a new --thread-id")
     _stream(app, seed, config)
     snap = app.get_state(config)
     if not snap.next:

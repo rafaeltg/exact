@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -80,6 +81,25 @@ def test_same_thread_id_continues_after_interrupt(tmp_path, capsys):
     second_out = capsys.readouterr().out
     assert second == 0
     assert "X is Y [src_t0_1_1]." in second_out
+
+
+def test_rerunning_a_finished_thread_is_refused(capsys):
+    saver = InMemorySaver()
+    rt = runtime()
+    first = main(
+        ["What is X?", "--skip-clarify", "--thread-id", "t-done"],
+        runtime=rt,
+        checkpointer=saver,
+    )
+    assert first == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exc:
+        main(
+            ["What is X?", "--skip-clarify", "--thread-id", "t-done"],
+            runtime=rt,
+            checkpointer=saver,
+        )
+    assert "already finished" in str(exc.value)
 
 
 def test_dangling_citations_fail_qa(capsys):
