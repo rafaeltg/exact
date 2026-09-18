@@ -106,8 +106,8 @@ If none, write "No user constraints — all critical and major findings included
 ### Execution Notes
 
 {Ordering constraints, files needing careful sequencing, or which patches to verify together.
-If a patch needs domain expertise, name the skill to load during execution: `python-quality` for code,
-`test-design` for tests, `design-principles-expert` for structure.}
+If a patch needs domain expertise, name the skill to load during execution: `python-quality` for code and structure,
+`test-design` for tests.}
 ```
 
 ### Patch action vocabulary

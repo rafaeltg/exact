@@ -310,7 +310,7 @@ class PostgresStore:
 
 Look for these signals:
 
-- **Unused imports in tests:** If your mock needs to implement 10 methods but your test only cares about 2, the interface is too fat
+- **Unused stubs in tests:** If your fake must implement methods the test never calls, the interface is too fat
 - **`NotImplementedError` stubs:** If implementors raise on methods they don't support, those methods belong in a different interface
 - **Consumers that use different subsets:** If module A calls methods 1-3 and module B calls methods 4-6, you have two interfaces masquerading as one
 

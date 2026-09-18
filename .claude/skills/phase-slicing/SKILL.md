@@ -91,6 +91,7 @@ For each cross-phase dependency, record:
 - **The signature** — parameter names and types, return type, error modes.
 - **Invariants** — what must be true after the producing phase ships (e.g., "the function is non-blocking", "the type is exhaustive over status values").
 - **Verification** — the producing phase's acceptance criteria must include a test that exercises the interface, not just internal behavior.
+- **Design DoD** — when the producing phase introduces a module, class, or Protocol: its responsibility in one sentence without "and", and the fake in `tests/fakes.py` that exercises it. See `python-quality` § [Design — landmines](../python-quality/SKILL.md#design--landmines).
 
 If you can't write the interface down concretely in the producing phase, the design isn't ready — go back and refine before drawing phases.
 
@@ -170,3 +171,4 @@ Before finalizing a structure document:
 - [ ] Scope boundaries at the structure level are specific enough to reject out-of-scope requests.
 - [ ] After mentally walking the phases in order, each leaves the system green and deployable.
 - [ ] No phase leaves a function over the complexity budget for a later phase.
+- [ ] Every new module, class, or Protocol in a cross-phase contract states its one-sentence responsibility and its test fake.

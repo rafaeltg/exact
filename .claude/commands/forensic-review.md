@@ -242,8 +242,8 @@ Seed the plan with `$REPORT_PATH`'s findings. Apply any constraints the user sta
 filters before drafting. Write the plan file using the PATCH_PLAN shape from
 `forensic-assessment`'s `references/output-formats.md`: patches traced to finding numbers,
 Target/Action/Rationale/Dependencies, an Excluded Findings table. If a patch needs domain
-expertise, name the skill to load during execution: `python-quality` for code, `test-design`
-for tests, `design-principles-expert` for structure.
+expertise, name the skill to load during execution: `python-quality` for code and structure,
+`test-design` for tests.
 
 `ExitPlanMode` is the approval gate. Once approved, execution proceeds as normal.
 

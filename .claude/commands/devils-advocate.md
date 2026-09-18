@@ -94,9 +94,8 @@ Invoke the `Workflow` tool with `name: "devils-advocate"` (script:
   "documentText": "<the document, <= 2,500 bytes>",
   "subject": "...", "sourcePath": "...", "inputKind": "file|inline|inline-enriched",
   "domainSkillMap": [
-    { "pattern": "architecture|coupling|abstraction|design|topology|graph", "skill": "design-principles-reviewer" },
     { "pattern": "test|pytest|fixture|fake|coverage", "skill": "test-design" },
-    { "pattern": "python|cli|pydantic|langgraph|node|tool|prompt", "skill": "python-quality" }
+    { "pattern": "python|cli|pydantic|langgraph|node|tool|prompt|architecture|coupling|abstraction|design|topology|graph", "skill": "python-quality" }
   ]
 }
 ```

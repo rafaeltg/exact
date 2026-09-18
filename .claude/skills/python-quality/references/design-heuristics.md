@@ -191,10 +191,10 @@ This is concise but dangerous: it hides the interface, breaks IDE autocompletion
 
 ### Measuring coupling informally
 
-- **Count the imports:** A module that imports 15 other modules is highly coupled
-- **Count constructor parameters:** A class with 8 dependencies probably does too much
-- **Count test setup lines:** If setting up a unit test requires 30 lines of mock configuration, coupling is too high
-- **The "change ripple" test:** If changing one module's internal implementation requires changes in 5 other files, coupling is too high
+- **Import breadth:** A module that imports most of the package is a coupling hotspot
+- **Constructor dependencies:** `__init__` is a function and carries the parameter cap (`.cursor/hooks/complexity-guard.py`; `self` is excluded). A state bag passed to dodge the cap is a forbidden repair -- see `SKILL.md` § Over-budget functions
+- **Test setup weight:** A unit test that needs a wall of fake configuration proves the coupling, not a testing inconvenience
+- **The "change ripple" test:** If changing one module's internal implementation forces edits across the tree, coupling is too high
 
 ### Stable vs volatile dependencies
 
@@ -329,6 +329,8 @@ async def process_order(order: Order) -> None:
 
 **When:** An `if/elif` chain switches on type or category.
 
+**Tie-break against `refactoring-patterns.md` §10 (`isinstance` → `match/case`):** a closed variant set owned by this module takes `match/case`; a set other modules extend takes polymorphism or a registry.
+
 ```python
 # Before
 def calculate_shipping(order: Order) -> Decimal:
@@ -360,7 +362,7 @@ class OvernightShipping:
 
 ### Introduce Parameter Object
 
-**When:** 3+ parameters travel together across multiple functions.
+**When:** The same group of parameters travels together across multiple functions. This is the fix `clean-code.md` § Argument count and `SKILL.md` § Known breach shapes row 1 both point at.
 
 ```python
 # Before: same parameters repeated everywhere
@@ -412,6 +414,8 @@ class AdminUser:
 
 **When:** Multiple implementations exist, or testing requires swappable dependencies.
 
+**In this repo:** a Protocol with no concrete implementation is forbidden, and so is a Protocol over a pure utility function. Extract at `Runtime` and tool boundaries only -- see `SKILL.md` § Design — landmines, DIP row.
+
 ```python
 # Before: service directly depends on concrete class
 from app.infrastructure.postgres import PostgresUserRepo
@@ -460,7 +464,7 @@ class Order:
 
 ### Decompose Conditional
 
-**When:** A complex boolean expression obscures intent.
+**When:** A complex boolean expression obscures intent. Naming the condition and flattening it with an early return (`refactoring-patterns.md` §2) are complementary -- name the predicate, then return early on it.
 
 ```python
 # Before
@@ -493,7 +497,7 @@ if (is_longstanding_customer(user)
 
 ### God Object
 
-One class that knows or does everything. Symptoms: 500+ lines, 20+ methods, imported by half the codebase.
+One class that knows or does everything. Symptom: imported by half the codebase, and its responsibility needs "and" to state.
 
 **Why it's harmful:** Every change risks breaking something. Testing requires massive setup. Multiple developers can't work on it without merge conflicts.
 

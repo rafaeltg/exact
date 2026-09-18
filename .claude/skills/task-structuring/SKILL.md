@@ -65,6 +65,8 @@ The point is not bureaucratic detail. The point is that the design document was 
 
 Name **every** participating field when a Do field gives a key, a tuple, a filter or a comparison. A dedupe key that names two of its four fields ships a silent bug. No test catches it.
 
+A task that creates or grows a function carries the Gate 0 output of `python-quality` (`.claude/skills/python-quality/SKILL.md` § [Gate 0 — required before writing](../python-quality/SKILL.md#gate-0--required-before-writing)): the unit list, one verb per unit, and the budget self-check. Name each unit as a function or type title, with its responsibility in one sentence and no "and". A unit that matches a [Known breach shape](../python-quality/SKILL.md#known-breach-shapes--exact) names its helpers first — helpers before the orchestrator, in that order in the Do field. Do not restate the budgets or the shapes; cite them.
+
 ## Writing the Verify command
 
 Each task gets a verification command that proves *this task's change* works. Not "run the whole suite" — that's the phase's integration gate. The task-level Verify is targeted and fast.
@@ -184,4 +186,5 @@ Before finalizing a plan:
 - [ ] Every `TEST=` path starts with `tests/` and names a file that exists.
 - [ ] Every `K=` filter names a test function that exists in that file.
 - [ ] No task leaves a function over the complexity budget for a later task to fix.
+- [ ] Every task that adds or grows a function carries a Gate 0 unit list.
 - [ ] Every Do field naming a key, tuple, filter or comparison names all participating fields.

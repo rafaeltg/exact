@@ -45,7 +45,7 @@ async def process_refund(order: Order, reason: str) -> RefundResult:
     )
 ```
 
-**30+ line function** -- almost always doing too much. When you see one, ask: "Can I name the blocks?" If you can describe what lines 1-10 do separately from lines 11-20, those should be separate functions.
+**Long function** -- the enforced cap is 40 code lines (`.cursor/hooks/complexity-guard.py` owns the number). Well before that cap, ask: "Can I name the blocks?" If you can describe what lines 1-10 do separately from lines 11-20, those are separate functions.
 
 ### The newspaper metaphor
 
@@ -79,34 +79,14 @@ The fewer arguments a function takes, the easier it is to understand, test, and 
 
 - **0 arguments (niladic):** Ideal. `get_current_time()`, `create_empty_cart()`
 - **1 argument (monadic):** Common and clear. `validate_email(email)`, `parse_config(path)`
-- **2 arguments (dyadic):** Acceptable. `create_user(name, email)` -- the order might not be obvious though
-- **3+ arguments (triadic):** Needs justification. Either the function does too much, or the arguments should be grouped into a parameter object
+- **2 arguments (dyadic):** Acceptable. `create_user(name, email)` -- the call-site order carries no hint
+- **3+ arguments (triadic):** A design prompt, not a breach. The enforced cap is 6 (`.cursor/hooks/complexity-guard.py` owns the number). Either the function does too much, or the arguments group into a parameter object
 
-```python
-# Too many arguments -- what's the order? What does each one mean?
-def create_report(
-    title: str,
-    start_date: date,
-    end_date: date,
-    format: str,
-    include_charts: bool,
-    department: str,
-) -> Report: ...
-
-# Fix: group related arguments into a parameter object
-class ReportConfig(BaseModel):
-    title: str
-    date_range: DateRange
-    format: ReportFormat
-    include_charts: bool = True
-    department: str
-
-def create_report(config: ReportConfig) -> Report: ...
-```
+The fix is the Introduce Parameter Object refactoring -- see `design-heuristics.md` § Introduce Parameter Object for the before/after, and `SKILL.md` § Known breach shapes row 1 for the shape this repo has already hit.
 
 ### Flag arguments
 
-A boolean parameter often signals that a function does two different things depending on the flag:
+A boolean parameter signals that a function does two different things depending on the flag:
 
 ```python
 # The flag means this function has two paths -- it does two things
@@ -117,7 +97,9 @@ def render_page(content: str, is_admin: bool = False) -> str:
         return render_public_page(content)
 ```
 
-When you see a flag argument, consider splitting into two explicit functions. The caller knows which one they need -- don't make them pass a boolean to select behavior.
+Split a flag argument into two explicit functions. The caller knows which one it needs -- do not make it pass a boolean to select behavior.
+
+As a complexity repair a boolean parameter is forbidden: adding one to merge two behaviours moves the breach instead of removing it. See `SKILL.md` § Over-budget functions for the permitted repair order.
 
 ### Return value consistency
 
@@ -193,6 +175,8 @@ The exception: when the noise word genuinely distinguishes something. `UserCreat
 
 ## Comments
 
+**Precedence:** `SKILL.md` § Docstrings and comments wins. The samples below anchor a comment to an external reference (`# Legal requirement: PCI DSS 3.4`, `# TODO(PROJ-1234)`). That shape is forbidden in this repo's source — paraphrase the reason the rule exists instead of citing where it is written. Read the samples for *why* a comment earns its place, not for how to write one here.
+
 ### Good comments
 
 ```python
@@ -260,6 +244,8 @@ The function name documents the "what"; the body documents the "how"; the docstr
 ---
 
 ## Error Handling Patterns
+
+**Precedence:** `SKILL.md` § Error handling wins. This section supplies the patterns behind those rules; where the two differ, the rule applies.
 
 ### The special case pattern
 

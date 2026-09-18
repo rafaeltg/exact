@@ -1,9 +1,9 @@
 ---
 name: python-quality
 description: |
-  TRIGGER: writing, refactoring, or reviewing Python — implement a module/node/tool, "review this diff", PR audit, bug-hunt, "what's wrong with this code".
+  TRIGGER: writing, refactoring, or reviewing Python — implement a module/node/tool, "review this diff", PR audit, bug-hunt, "what's wrong with this code"; design-quality questions on Python or on a proposed structure — SOLID, Clean Code, coupling, cohesion, Tell Don't Ask, Law of Demeter, composition vs inheritance, "this class does too much", "should I refactor this", "is this too coupled", "make this maintainable", design audits of a PR, module, or architecture proposal.
   EXCLUDE: test-only work owned by test-design (still load test-design whenever tests are written or reviewed); non-Python surfaces.
-  SIGNAL: Python authoring or a quality question on existing Python.
+  SIGNAL: Python authoring, or a quality or design question on existing Python or a described structure.
 ---
 
 # Python Quality
@@ -19,6 +19,50 @@ Two modes. **Implement** when writing or refactoring. **Review** when evaluating
 | Write, refactor, fix, implement | Implement |
 | Review, audit, PR feedback, what's wrong | Review |
 | Implement then verify | Implement, then Review on the diff |
+
+## Design — landmines
+
+Applies to every unit under `src/exact/`. Under `scripts/` and in a spike the abstraction rows below add nothing new — the misapplication rows still apply. A design finding names the consequence and the row; the acronym alone is not a finding.
+
+### SOLID — misapplication landmines
+
+| Principle | Landmine (forbidden shape) | Required composition |
+|-----------|----------------------------|----------------------|
+| **SRP** — one reason to change, one actor | Splitting a cohesive persistence class into one class per method — `create`/`get`/`update`/`delete` is one responsibility | Split by reason to change; a responsibility that needs "and" to state is two |
+| **OCP** — extend by adding code | A Strategy or Protocol built for one implementation and no second real case — see [Type hints](#type-hints--required) | `elif` until the second real case arrives, then extract with two examples in hand |
+| **LSP** — subtypes honour the base contract | A subtype that raises `NotImplementedError` on an inherited method, narrows a parameter type, or widens a return type | Split the Protocol — `Reader` and `Writer`, never inherit-and-stub |
+| **ISP** — clients depend on what they use | One-method interfaces cut from a cohesive Protocol | Split a Protocol only when consumers use distinct subsets |
+| **DIP** — depend on abstractions at boundaries | A Protocol over a pure utility function; a concrete client constructed inside a caller that already has a `Runtime` seam | Abstractions at `Runtime` and tool boundaries only; wire concretes at the composition root |
+
+### Clean Code — required
+
+- One abstraction level per function. Mixing `await client.search(q)` with `url.split("/")[2]` in one body is forbidden — extract the low-level step
+- Command-Query Separation: a function changes state or answers a question. The three exceptions are factories, atomic read-and-write, and pop-style idioms; each states the effect in its name
+- No hidden side effect. A validator that also normalises or caches renames to state both effects, or splits query from transform
+- Guard clauses. The happy path stays at the left margin
+- DRY by knowledge. Merging two blocks that carry different concepts is forbidden — they diverge, and premature abstraction costs more than the duplication. Rule of Three: tolerate once, note twice, extract on the third
+- YAGNI. An abstraction built for a hypothetical future is forbidden
+- Domain errors, never exceptions for flow control. Each layer handles or translates the layer below
+
+### Structure — required
+
+- Composition by default. Inheritance only for behavioural is-a, a framework base (Pydantic `BaseModel`), or an interface-only base. A mixin past a few methods is a service to inject
+- Tell Don't Ask. `order.begin_processing()` is required where the caller would otherwise read three fields and mutate from outside
+- Law of Demeter on behaviour-rich objects. `a.b.c.d` is forbidden there. Pydantic models and DTOs are meant to be traversed — that is the rule, not an exemption
+- A class whose responsibility needs "and" is split by responsibility, never by line count. Splitting a cohesive class to shrink it raises coupling
+- Act on: Feature Envy, Shotgun Surgery, Divergent Change, Primitive Obsession, long parameter lists (cap 6 — [Complexity budgets](#complexity-budgets--landmines))
+
+### Before the first body — required
+
+1. State the unit's responsibility in one sentence without "and". Name the likely extension point; design flexibility there and nowhere else
+2. Start concrete. Extract the Protocol when the second use case lands, never before
+3. A name you cannot find means the concept is not understood yet. Stop and name it before writing
+4. A parameter list you cannot name in one breath is a parameter object. The cap is 6
+5. Check dependency direction. A high-level module that imports a low-level detail across a boundary takes the abstraction at that boundary
+
+Deep dives — load for a module boundary or an interface hierarchy: [references/solid-principles.md](references/solid-principles.md), [references/clean-code.md](references/clean-code.md), [references/design-heuristics.md](references/design-heuristics.md).
+
+**Document input.** When the input is a design proposal, architecture note, or spec section and not a diff: run Pass 1 and Pass 2 against the structure the document describes, plus the Pass 4 testability question. Passes 3 and 5 need code and are skipped. `file:line` becomes the document heading or the quoted line.
 
 ---
 
@@ -44,7 +88,7 @@ Neighbor rules:
 
 Do not open a Write/StrReplace on a new or grown function until all of these exist (in the reply or in a stub file):
 
-1. **Unit list** — every new responsibility named as a function or type title
+1. **Unit list** — every new responsibility named as a function or type title — name the responsibility in one sentence without "and", see [Design — landmines](#design--landmines)
 2. **One job test** — each unit has one verb; two verbs ⇒ two units
 3. **Budget self-check** against [Complexity budgets](#complexity-budgets--landmines) for each unit
 4. **Extract-first** when the unit matches a [Known breach shape](#known-breach-shapes--exact) — helpers and value objects first, thin orchestrator last
@@ -98,6 +142,10 @@ Required:
 - Public signatures typed; all imports at module top
 - Dependencies injected via `Runtime` or constructors — module-level client singletons that block fakes are forbidden
 - Gate 0 unit list was completed **before** the Write that introduced each new function
+- Every function is understandable from its name and signature alone
+- Every class's responsibility states in one sentence without "and"
+- No internal change forces a caller change
+- Every unit is testable with `tests/fakes.py` fakes — painful setup is a coupling defect, not a test problem
 
 Do not invent mypy/`type: ignore` policy the repo never configured. Do not leave public signatures untyped.
 
@@ -105,7 +153,7 @@ Do not invent mypy/`type: ignore` policy the repo never configured. Do not leave
 
 - Obey `requires-python` in `pyproject.toml` (this repo: 3.12+)
 - Use `X | None`, not `Optional[X]`; use `list[str]`, not `List[str]`
-- Prefer PEP 695 `type` aliases over assignment aliases when naming a reusable type
+- Name a reusable type with a PEP 695 `type` alias; assignment aliases are forbidden for that purpose
 - Use `@override` on every method that implements a Protocol or overrides a base — omitting it is forbidden
 
 ## Naming — required
@@ -203,6 +251,8 @@ Do not start Pass 1 until you have:
 2. Read `AGENTS.md` and `pyproject.toml`
 3. Classified scope: bugfix | feature | refactor
 4. Noted test seams (`tests/fakes.py`, DI / `Runtime`)
+5. Stated the unit's lifespan and audience — a `scripts/` file gets Passes 3–5 only
+6. Read the intent before naming a pattern a defect — an intentional Facade reviewed as a god class is a false finding, and a false finding is a review failure
 
 Scope order is mandatory:
 
@@ -216,11 +266,11 @@ Run all five. Do not skip ahead to polish.
 
 ### Pass 1 — Architecture
 
-Flag: wrong abstractions; dependencies not flowing inward; files outside `src/exact/...` placement; singletons that block injection; circular deps; layer leaks.
+Flag: wrong abstractions; dependencies not flowing inward; files outside `src/exact/...` placement; singletons that block injection; circular deps; layer leaks; a class whose responsibility needs "and"; catch-all `utils.py` / `helpers.py`; Feature Envy; hidden module-level deps in place of `Runtime` injection.
 
 ### Pass 2 — Contracts
 
-Flag: unclear public signatures; Protocols without concrete impls; unvalidated external input; generic errors where domain errors belong; APIs that cannot evolve without breaking callers.
+Flag: unclear public signatures; Protocols without concrete impls; unvalidated external input; generic errors where domain errors belong; APIs that cannot evolve without breaking callers; leaky abstractions; a Protocol / Strategy / Factory with one implementation; a concrete client hardcoded where a `Runtime` seam exists; `isinstance` dispatch chains; LSP `NotImplementedError` stubs.
 
 ### Pass 3 — Correctness
 
@@ -228,11 +278,11 @@ Flag: main path ≠ stated intent; missing edge cases; illegal `except Exception
 
 ### Pass 4 — Testing
 
-Flag every `test-design` violation: private access, implementation assertions, mocks not at DI seams, live network, missing error/edge coverage, non-scenario names.
+Flag every `test-design` violation: private access, implementation assertions, mocks not at DI seams, live network, missing error/edge coverage, non-scenario names. Painful isolation setup is a coupling finding, not a test finding; a boundary without a fake in `tests/fakes.py` is a design finding.
 
 ### Pass 5 — Polish
 
-Flag: naming violations; comment/docstring hygiene breaks; any [Forbidden](#forbidden--landmines) item; untyped public signatures; complexity-guard breaches or forbidden repairs; new functions that match a [Known breach shape](#known-breach-shapes--exact) without extract-first composition.
+Flag: naming violations; comment/docstring hygiene breaks; any [Forbidden](#forbidden--landmines) item; untyped public signatures; complexity-guard breaches or forbidden repairs; new functions that match a [Known breach shape](#known-breach-shapes--exact) without extract-first composition; mixed abstraction levels in one body; `Manager` / `Handler` / `Processor` / `Helper` names; CQS breaks.
 
 ## Severity — mandatory classification
 
@@ -240,10 +290,10 @@ Every finding gets exactly one:
 
 | Level | Use when |
 |-------|----------|
-| **Critical** | Bug, data loss, security hole, production incident if merged |
-| **Major** | Serious correctness / maintainability / perf — must fix before merge |
-| **Minor** | Contract/quality violation without immediate functional break |
-| **Suggestion** | Optional improvement only — never use for a rule violation |
+| **Critical** | Bug, data loss, security hole, production incident if merged; circular deps; business logic embedded in infrastructure |
+| **Major** | Serious correctness / maintainability / perf — must fix before merge; a class with several reasons to change; missing DI at a boundary; a type-switch chain |
+| **Minor** | Contract/quality violation without immediate functional break; vague naming; mixed abstraction levels |
+| **Suggestion** | Optional improvement only — never use for a rule violation; Tell-Don't-Ask moves; value-object extraction |
 
 Inflating Critical or burying Critical under Suggestions is forbidden. Rule violations are never Suggestions.
 
@@ -290,9 +340,14 @@ Name 2–3 specific strengths. Required when the change has any.
 - Do not demand rewrites of working, tested, rule-compliant code for taste
 - Diffs >500 lines: Passes 1–3 before Pass 5
 - Substantial self-authored changes: review in a fresh context / subagent (`AGENTS.md`) — in-context self-review does not satisfy this rule
+- Name the consequence the design problem causes; the acronym alone is not a finding
+- Split for cohesion, never for line count — a cohesive large class beats five coupled small ones
 
 ## References — load when needed
 
 - [references/review-checklist.md](references/review-checklist.md) — mandatory item list for thorough / large / unfamiliar reviews
 - [references/refactoring-patterns.md](references/refactoring-patterns.md) — required catalog for concrete Suggestions
 - [references/style-standards.md](references/style-standards.md) — exact tool and naming ground truth
+- [references/solid-principles.md](references/solid-principles.md) — extended SOLID examples, edge cases, debates
+- [references/clean-code.md](references/clean-code.md) — function size analysis, abstraction levels, naming, error handling
+- [references/design-heuristics.md](references/design-heuristics.md) — composition patterns, coupling/cohesion analysis, refactoring catalog, anti-patterns

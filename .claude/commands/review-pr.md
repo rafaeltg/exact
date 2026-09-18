@@ -286,7 +286,6 @@ in your context) to reviewer skills:
 | --- | --- |
 | `.py` outside `tests/`, Pydantic models, graph nodes, `src/exact/tools/` | `python-quality` |
 | `tests/`, `tests/fakes.py` | `test-design` |
-| Graph topology, `Runtime` injection, module boundaries, restructuring | `design-principles-reviewer` |
 
 Record matches as `SKILLS_TO_LOAD` (possibly empty). `RUN_DOMAIN_AGENT` = non-empty
 `SKILLS_TO_LOAD`.

@@ -83,7 +83,6 @@ Capture `TIMESTAMP` via `date -u +%Y%m%d-%H%M%S`. Set `REPORT_PATH = .claude/art
    | --- | --- |
    | `.py` outside `tests/`, Pydantic models, graph nodes, `src/exact/tools/` | `python-quality` |
    | `tests/`, `tests/fakes.py` | `test-design` |
-   | Graph topology, `Runtime` injection, module boundaries, restructuring | `design-principles-reviewer` |
 
    Record matches as `SKILLS_TO_LOAD` (possibly empty). `RUN_DOMAIN_AGENT` = non-empty
    `SKILLS_TO_LOAD`; `RUN_DOC_VS_CODE_AGENT` = non-empty `CONTEXT_FILES` AND `SCOPE_TYPE`
