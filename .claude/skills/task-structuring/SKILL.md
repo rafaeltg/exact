@@ -97,7 +97,7 @@ If the project has no convention for the test layer the task touches, surface th
 - **Complexity budget:** keep every function a task touches inside the guard budgets. `.cursor/hooks/complexity-guard.py` owns the numbers. Never restate them. `make complexity-check` fails on any function over budget, and the git pre-commit hook runs it. It therefore rejects the commit. **Two changes are ONE task when the first pushes a function over budget until the second lands.** Extract the new named unit and split the function it shrinks in one commit.
 - **Contract changes:** a task that changes graph topology, bounds, tools, or citation rules must update `docs/spec.md` and `docs/architecture.md` in the same task. Name both files in the Files field.
 - **Graph or node changes:** the Verify must exercise the node through the graph, not through a private helper. Tests use `tests/fakes.py`; no task adds live network to pytest.
-- **Full gate:** `make check` runs lint, format-check, complexity, and tests. Use it for the final task of a phase, not for every task — a targeted `make test TEST=…` is the better per-task Verify.
+- **Full gate:** `make check` runs lint, format-check, complexity, imports, and tests. Use it for the final task of a phase, not for every task — a targeted `make test TEST=…` is the better per-task Verify.
 
 ### When a task needs multiple Verify commands
 

@@ -9,7 +9,7 @@ make setup             # uv sync --extra dev + pre-commit hooks
 cp .env.example .env   # set EXA_API_KEY and ANTHROPIC_API_KEY (or OPENAI_API_KEY)
 uv run exact "Are GLP-1 agonists effective for heart failure?"
 uv run exact --skip-clarify "What is a Durable Object?"
-make check             # lint + format-check + complexity + tests
+make check             # lint + format-check + complexity + imports + tests
 make lint-fix         # ruff format + safe lint fixes
 ```
 Default model: `anthropic:claude-haiku-4-5`. Optional per-role overrides: `EXACT_MODEL_*`, `EXACT_MAX_TOKENS_*`, plus `EXACT_TEMPERATURE`, `EXACT_REASONING_EFFORT`, `EXACT_THINKING_BUDGET` (see `.env.example` / architecture).

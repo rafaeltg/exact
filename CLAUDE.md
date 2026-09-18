@@ -10,6 +10,7 @@ specific to Claude Code. `.claude/settings.json` holds that wiring. It mirrors
 | --- | --- | --- | --- |
 | `PreToolUse` | `Write\|Edit` | `make complexity-pre` | Denies a new or worse breach before the write reaches disk |
 | `PostToolUse` | `Write\|Edit` | `scripts/hooks/post-edit.sh` | Runs `make lint-fix FILE=…` on the edited file |
+| `PostToolUse` | `Write\|Edit` | `scripts/hooks/post-plan.sh` | Reports unresolved paths and `make` targets in a plan artifact |
 | `PostToolUse` | `Bash` | `scripts/hooks/post-bash.sh` | Reports tree debt after a shell command changes Python |
 
 Claude has no `TabWrite` tool. The Cursor `complexity-post` hook has no

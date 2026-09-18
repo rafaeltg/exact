@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "import-linter>=2.15",
   "pytest>=8.0.0",
   "ruff>=0.16.0",
 ]
@@ -67,3 +68,15 @@ known-first-party = ["exact"]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+
+[tool.importlinter]
+root_package = "exact"
+
+# Package-level and stricter than "no module cycle": at each level the contract
+# squashes every sibling's subtree, forbids cycles between the siblings, then
+# drills into each subpackage. It therefore also fails on package-to-package
+# indirection that is not itself a module cycle. That is the intended posture.
+[[tool.importlinter.contracts]]
+name = "No import cycles inside exact"
+type = "acyclic_siblings"
+ancestors = "exact"

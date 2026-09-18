@@ -171,6 +171,10 @@ Spec: <path or "inline">   Assumptions: ./assumptions.md   Date: <YYYY-MM-DD>
 **Do:** · **Files:** create: … | modify: … · **Verify:** `<command>`
 ```
 
+`·` separates the fields in the shape above. Write each field on its own line.
+`make plan-check` anchors on a line that starts with the field name, so fields packed onto one
+line parse as zero references and the check reports nothing.
+
 Write no implementation code. Write no commentary outside the document.
 
 ### Write it in steps. Never in one call
@@ -186,6 +190,11 @@ One large write degrades the end of the document. The last tasks lose fields and
 4. Split a phase of more than 6 tasks into two `Edit` calls. Keep the placeholder line at the end
    of the first `Edit`.
 5. Never rewrite a part you
+6. Run `make plan-check FILE=<plan-path>`. Do not enter Phase 6 while it reports a finding.
+   The guard resolves every `Files:` path, `TEST=` path, `K=` name and `make` target the plan
+   claims. **Known limit:** `create:` paths exist once execution starts, so a plan edited after
+   its Phase 1 has landed reports those paths. The guard reports; it never denies. Read each
+   report line against execution state.
 
 ## Phase 6 — Grounding review (hard gate)
 
@@ -202,11 +211,11 @@ before anyone executes it.
 
    | Check | Method |
    |---|---|
-   | Each `Files: modify:` path exists | `Glob` |
+   | Each `Files: modify:` path exists | `Glob` — also machine-checked by `make plan-check` |
    | Each `Files: create:` path does not exist | `Glob` |
    | Each symbol a Do field names exists | `Grep` for the definition |
    | Each call-site or caller count | `Grep` for the name. **Never `make lint` output** — it does not report call sites |
-   | Each `make` target in a Verify exists | `Grep` the `Makefile` for the target |
+   | Each `make` target in a Verify exists | `Grep` the `Makefile` for the target — also machine-checked by `make plan-check` |
    | Both skill Author checklists pass | Read the two `SKILL.md` files |
    | Every name matches `contract.md` | Read `contract.md` |
    | Every behaviour-affecting gap in `gaps.md` has an `A<n>` entry | Read `gaps.md` and `assumptions.md` |

@@ -26,7 +26,7 @@ cp .env.example .env
 # ELICIT_API_KEY is reserved for the dormant Elicit client; no live code reads it
 # set EXACT_GITHUB_USER for /commit and /create-pr (gh auth switch)
 
-# 4. Run the gate (lint + format-check + complexity + workflow scripts + tests)
+# 4. Run the gate (lint + format-check + complexity + imports + workflow scripts + tests)
 make check
 ```
 
@@ -35,7 +35,11 @@ Raw equivalents: `uv sync --extra dev`, `uv run pytest -q`. See `make help`.
 Editor: install the Ruff extension. `.vscode/settings.json` turns on format
 and lint-fix on save. Agent `Write`/`StrReplace` hit `make complexity-pre`
 before disk; after an allowed write, `afterFileEdit` runs
-`scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`.
+`scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. A write under
+`.claude/artifacts/plan/` also runs `scripts/hooks/post-plan.sh` →
+`make plan-check FILE=…`, which reports every path, `TEST=` path, `K=` name
+and `make` target the plan claims but the tree does not carry. That hook
+reports; it never denies.
 
 ## 2. Tests
 
@@ -71,6 +75,8 @@ Authoritative test rules live in the test-design skill under
    cleanly-staged files that the fixers changed (partial staging is left
    alone and warned).
 2. **`make complexity-check`** — fail if any tracked function is over budget.
+3. **`make imports-check`** — fail if any module inside `exact` takes part
+   in an import cycle.
 
 Do not skip hooks. `git commit --no-verify` is for emergencies only.
 
@@ -101,13 +107,35 @@ halves that share most of their locals.
 make complexity-check
 ```
 
-## 5. CI pipeline (not defined yet)
+## 5. Import gate
+
+`make imports-check` runs [import-linter](https://import-linter.readthedocs.io)
+against the contract in `pyproject.toml` (`[tool.importlinter]`). It fails on
+any import cycle inside `exact`. `make check` runs it, and so does the
+pre-commit hook.
+
+The contract is package-level, and stricter than "no module cycle". At each
+level it squashes every sibling's subtree, forbids cycles between the
+siblings, then drills into each subpackage. It therefore also fails on
+package-to-package indirection that no single module cycle explains. That is
+the intended posture: a boundary that needs the indirection is a boundary in
+the wrong place.
+
+`TYPE_CHECKING` imports count as edges. Do not hide a cycle behind one, and do
+not loosen the contract to pass. A cycle means the responsibility boundaries
+are wrong — see the `python-quality` skill, § Design — landmines.
+
+```bash
+make imports-check
+```
+
+## 6. CI pipeline (not defined yet)
 
 There is no `.github/workflows/` pipeline yet. When one lands, document the
-jobs here. Until then, a change is ready when the local gates in §7 are
+jobs here. Until then, a change is ready when the local gates in §8 are
 clean.
 
-## 6. Conventions
+## 7. Conventions
 
 - **Python:** 3.12+, `src/exact` layout, `from __future__ import annotations`
   in every module.
@@ -149,7 +177,7 @@ Graph invariants (see also `AGENTS.md`):
   graph still finishes.
 - `messages` is the clarify thread only.
 
-## 7. Definition of done
+## 8. Definition of done
 
 A change is done when all of these are clean:
 
@@ -157,6 +185,6 @@ A change is done when all of these are clean:
 make check
 ```
 
-## 8. Releasing (out of scope for this pass)
+## 9. Releasing (out of scope for this pass)
 
 No release process is defined yet. When one is, link it from here.

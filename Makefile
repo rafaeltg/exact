@@ -2,6 +2,7 @@
         test test-failed \
         lint lint-fix format format-fix \
         complexity-check complexity-pre complexity-post \
+        plan-check imports-check \
         workflows-check \
         check clean
 
@@ -19,6 +20,7 @@ export PROJECT
 # K=<keyword>          → pytest -k filter
 # VERBOSE=1            → -vv -x; default is quiet (-q)
 # FILE=<path>          → lint-fix / format / format-fix one .py / .pyi file
+#                        plan-check one .md plan artifact
 TEST ?=
 K    ?=
 FILE ?=
@@ -42,11 +44,19 @@ UV     = uv run
 RUFF   = $(UV) ruff
 PYTEST = $(UV) pytest
 GUARD  = python3 .cursor/hooks/complexity-guard.py
+PLAN_GUARD = python3 .cursor/hooks/plan-guard.py
 
 define require_python_file
 	@case "$(FILE)" in \
 	  *.py|*.pyi) ;; \
 	  *) printf 'error: FILE= only accepts .py / .pyi (got: %s)\n' "$(FILE)" >&2; exit 2 ;; \
+	esac
+endef
+
+define require_md_file
+	@case "$(FILE)" in \
+	  *.md) ;; \
+	  *) printf 'error: FILE= only accepts .md (got: %s)\n' "$(FILE)" >&2; exit 2 ;; \
 	esac
 endef
 
@@ -128,6 +138,26 @@ complexity-pre: ## Cursor preToolUse — deny over-budget Write/StrReplace
 complexity-post: ## Cursor postToolUse — advisory complexity context
 	@$(GUARD)
 
+# ─── Imports ───────────────────────────────────────────────────────────
+# Package-level: at each level the contract squashes every sibling's subtree
+# and forbids cycles between the siblings. Stricter than "no module cycle" —
+# it also fails on package-to-package indirection. Config: pyproject.toml
+# [tool.importlinter].
+imports-check: ## Fail on any import cycle inside exact
+	$(AT)printf '==> imports-check\n' >&2
+	$(AT)$(UV) lint-imports
+
+# ─── Plan artifacts ────────────────────────────────────────────────────
+# Reference gate for a `/plan` artifact: every `Files:` path, `TEST=` path,
+# `K=` name and `make` target it claims must resolve. Exits 2 with one line per
+# finding. The guard itself skips any path outside `.claude/artifacts/plan/`.
+plan-check: ## Verify plan-artifact references. FILE=<plan.md>
+	$(AT)printf '==> plan-check%s\n' "$(if $(FILE), ($(FILE)),)" >&2
+	@test -n "$(FILE)" || { \
+	  printf 'error: plan-check requires FILE=<plan.md>\n' >&2; exit 2; }
+	$(call require_md_file)
+	$(AT)$(PLAN_GUARD) "$(FILE)"
+
 # ─── Workflow scripts ──────────────────────────────────────────────────
 # `.claude/workflows/*.js` run in the agent harness, not in any interpreter this
 # project ships. The check is therefore host-side and skips when node is absent.
@@ -172,11 +202,12 @@ test-failed: ## Re-run only previously failed tests
 	$(AT)$(PYTEST) tests --lf $(PYTEST_ARGS)
 
 # ─── Aggregate gate (AGENTS.md "Done when") ────────────────────────────
-check: ## Lint, format-check, complexity, workflow scripts, tests
+check: ## Lint, format-check, complexity, imports, workflow scripts, tests
 	$(AT)printf '==> check\n' >&2
 	@$(MAKE) lint
 	@$(MAKE) format
 	@$(MAKE) complexity-check
+	@$(MAKE) imports-check
 	@$(MAKE) workflows-check
 	@$(MAKE) test
 

@@ -13,6 +13,10 @@
       {
         "command": "scripts/hooks/post-edit.sh",
         "timeout": 20
+      },
+      {
+        "command": "scripts/hooks/post-plan.sh",
+        "timeout": 20
       }
     ],
     "postToolUse": [

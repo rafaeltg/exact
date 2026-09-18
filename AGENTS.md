@@ -10,12 +10,15 @@ make test               # TEST=path K=expr VERBOSE=1
 make lint / lint-fix
 make format / format-fix   # FILE=path for one file
 make complexity-check
+make imports-check       # fail on any import cycle inside exact
+make plan-check FILE=path  # verify a .claude/artifacts/plan/ artifact's references
 make workflows-check    # syntax-check .claude/workflows/*.js
-make check              # lint + format-check + complexity + workflow scripts + tests
+make check              # lint + format-check + complexity + imports + workflow scripts + tests
 make clean
 ```
 
-Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage) and `make complexity-check`. Do not skip hooks.
+Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage), `make complexity-check` and
+`make imports-check`. Do not skip hooks.
 
 Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` hit `make complexity-pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. `TabWrite` gets `make complexity-post` via `postToolUse`.
 
@@ -64,7 +67,7 @@ make complexity-check
 
 ## Done when
 
-`make check` is clean (lint + format-check + complexity + tests).
+`make check` is clean (lint + format-check + complexity + imports + tests).
 
 ## MANDATORY rules
 

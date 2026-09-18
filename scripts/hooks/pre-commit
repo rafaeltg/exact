@@ -128,6 +128,15 @@ else
   fail=1
 fi
 
+# ─── 5. imports-check ──────────────────────────────────────────────────
+section "imports-check"
+if make imports-check; then
+  ok "imports-check passed"
+else
+  err "imports-check failed — see output above"
+  fail=1
+fi
+
 # ─── Result ────────────────────────────────────────────────────────────
 if [ "$fail" -ne 0 ]; then
   printf '\n\033[31mpre-commit failed.\033[0m Fix the errors above or skip with: git commit --no-verify\n'
