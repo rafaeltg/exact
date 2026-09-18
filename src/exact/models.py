@@ -202,6 +202,9 @@ class ExactState(TypedDict, total=False):
     continue_research: bool
     iteration: int
     max_iterations: int
+    effort: str
+    max_topics_first_wave: int
+    max_topics_followup: int
     final_report: str
     uncovered: list[str]
 

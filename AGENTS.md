@@ -24,7 +24,7 @@ Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settin
 
 ## Bounds (do not loosen)
 
-- Clarify turns ≤ 3; research waves ≤ 3; topics/wave ≤ 3; tool rounds/worker ≤ 4; hits/call ≤ 5
+- Ceilings are the `max` profile: clarify turns ≤ 3; research waves ≤ 4; topics/wave ≤ 4 (follow-up ≤ 3); tool rounds/worker ≤ 6; hits/call ≤ 8. A default run is `normal`: 3; 3; 3 (2); 4; 5
 - `EXACT_TEMPERATURE` default 0. GPT-5/6: `EXACT_REASONING_EFFORT` (default `none`). Anthropic thinking: `EXACT_THINKING_BUDGET` (default `0` = off)
 - Per-role models and max tokens via `EXACT_MODEL_*` / `EXACT_MAX_TOKENS_*`; empty model inherits `EXACT_MODEL`
 - CLI + SQLite checkpointer. No HTTP API, web UI, or extra retrieval vendors

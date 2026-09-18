@@ -16,4 +16,4 @@ Default model: `anthropic:claude-haiku-4-5`. Optional per-role overrides: `EXACT
 
 Optional: `ELICIT_API_KEY` for paper search on academic queries.
 
-Does not guarantee truth. Citations must resolve. Spend is capped (3 clarify turns, 3 waves, 4 tool rounds per worker).
+Does not guarantee truth. Citations must resolve. Spend is capped by the effort profile: `normal` (3 waves, 3 topics, 4 tool rounds, 5 hits) or `max` (4, 4, 6, 8). Pick one with `--effort` or `EXACT_EFFORT`.

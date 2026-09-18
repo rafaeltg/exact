@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from exact.models import JsonMapping
@@ -16,6 +16,20 @@ def format_update(node: str, update: Any) -> list[str]:
     if handler:
         return handler(data)
     return [f"[{node}]"]
+
+
+def format_effort(snapshot: Mapping[str, Any]) -> str:
+    """Render one run's resolved caps as the run-start echo line."""
+    return (
+        f"effort={snapshot['effort']} "
+        f"waves={snapshot['max_iterations']} "
+        f"topics={snapshot['max_topics_first_wave']}/"
+        f"{snapshot['max_topics_followup']} "
+        f"rounds={snapshot['max_tool_rounds']} "
+        f"hits={snapshot['max_hits']} "
+        f"clarify={snapshot['max_clarify_turns']} "
+        f"concurrency={snapshot['max_concurrency']}"
+    )
 
 
 def format_plan(topics: Sequence[JsonMapping], *, wave: int | None = None) -> list[str]:

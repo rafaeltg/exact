@@ -1,6 +1,6 @@
-# Exact — Architecture (ODR v1.4)
+# Exact — Architecture (ODR v1.5)
 
-Contract: [spec.md](./spec.md) v1.4.0. LangChain [Open Deep Research](https://www.langchain.com/blog/open-deep-research) pipeline. Tools: Exa. Clarification grounded in scout. `Source` carries a `focus` lane.
+Contract: [spec.md](./spec.md) v1.5.0. LangChain [Open Deep Research](https://www.langchain.com/blog/open-deep-research) pipeline. Tools: Exa. Clarification grounded in scout. `Source` carries a `focus` lane.
 
 ```
  User                         exact                         vendors
@@ -46,6 +46,7 @@ Four LLM roles. Scout and `audit_citations` use no LLM. All values below are Set
  EXACT_MAX_TOKENS_WRITE      8192
  EXACT_REASONING_EFFORT      none (GPT-5/6 only)
  EXACT_THINKING_BUDGET       0 (Anthropic; 0 = off)
+ EXACT_EFFORT                normal (normal | max)
 ```
 
 Empty `EXACT_MODEL_*` still inherits `EXACT_MODEL`. `.env.example` sets every role to Haiku so the cost-optimal Anthropic profile is copy-paste ready.
@@ -89,10 +90,10 @@ EXACT_MODEL_WRITE=anthropic:claude-sonnet-4-5
                                                   |
                                             plan_topics
                                            /     |     \
-                                        Send   Send   Send     1..3
+                                        Send   Send   Send     1..first cap
                                            \     |     /
                                         research_agent
-                                        create_agent <=4
+                                        create_agent <= tool rounds
                                         then prune
                                            \     |     /
                                             reflect
@@ -144,7 +145,7 @@ The scout publication lane uses the query academic heuristic only (scout is befo
       v                  v
  research_agent     research_agent
    create_agent         ...
-   ModelCallLimitMiddleware(run_limit<=4)
+   ModelCallLimitMiddleware(run_limit <= tool rounds)
    one lane search tool (by topic focus) + exa_highlights
       |                  |
    prune -> Finding      prune
@@ -162,11 +163,11 @@ Parent never sees raw tool I/O. The worker ReAct loop is an ephemeral LangChain 
 ## Tools
 
 ```
- exa_search          discovery and news, 5 hits
- exa_people_search   people profiles (category=people), 5 hits
- exa_company_search  company profiles (category=company), 5 hits
+ exa_search          discovery and news, max_hits (5 normal, 8 max)
+ exa_people_search   people profiles (category=people), max_hits (5 normal, 8 max)
+ exa_company_search  company profiles (category=company), max_hits (5 normal, 8 max)
  exa_highlights      read a known URL (not full page)
- exa_publication_search  papers with abstract + DOI (category=publication), 5 hits, bound by focus
+ exa_publication_search  papers with abstract + DOI (category=publication), max_hits (5 normal, 8 max), bound by focus
 ```
 
 Scout runs a general Exa search, plus an Exa `category=publication` search on an academic signal; the lanes are interleaved before ids are minted. The planner assigns each topic a `focus` lane, and the worker binds only that lane's search tool plus `exa_highlights` — the agent no longer picks between categories. The planner is the only source of topics on every wave; topics are `{query, focus}` and identity is the pair. A wave with no usable planner topic falls back to the unused follow-ups, else the brief question; the fallback skips the cross-wave dedup, because no planner rephrased it around `prior`, so a retry of a failed lane still runs. Entity metadata (person, company, publication) is folded into `Source.snippet`.
@@ -203,12 +204,15 @@ The CLI also prints `## References` from `sources` after the report so citations
 ## Bounds
 
 ```
- clarify turns <= max_clarify_turns (default 3)
- waves         <= 3
- topics/wave   <= 3
- tool rounds   <= 4 / worker  (ModelCallLimitMiddleware run_limit = model calls)
- tool text     <= 8000 chars into the agent loop
- hits/call     <= 5
+                       normal   max
+ clarify turns             3       3    (max_clarify_turns)
+ waves                     3       4    (max_iterations)
+ topics/first wave         3       4
+ topics/follow-up wave     2       3
+ tool rounds / worker      4       6    (ModelCallLimitMiddleware run_limit)
+ hits/call                 5       8    (max_hits)
+ concurrency               3       4    (max_concurrency, top-level config)
+ tool text              8000    8000    chars into the agent loop
 ```
 
 `ask_user` and the route after `ask_user` read `max_clarify_turns` from state.

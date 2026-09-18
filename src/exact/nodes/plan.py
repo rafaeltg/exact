@@ -25,25 +25,31 @@ def _fallback_focus(brief: dict) -> TopicFocus:
     return "publication" if brief.get("intent") in ("academic", "mixed") else "web"
 
 
-def _fallback_topics(state: ExactState, brief: dict) -> list[PlannedTopic]:
+def _topic_caps(state: ExactState, runtime: Runtime) -> tuple[int, int]:
+    """The first-wave and follow-up topic caps of the run's effort profile."""
+    settings = runtime.settings
+    return (
+        int(state.get("max_topics_first_wave") or settings.max_topics_first_wave),
+        int(state.get("max_topics_followup") or settings.max_topics_followup),
+    )
+
+
+def _fallback_topics(state: ExactState, brief: dict, cap: int) -> list[PlannedTopic]:
     """Topics for a wave the planner could not supply.
 
     Unused follow-ups are the reason a later wave exists, so they become its
     topics. A wave with none falls back to the brief question.
     """
     focus = _fallback_focus(brief)
-    queries = [q.strip() for q in state.get("followups") or [] if q and q.strip()][:2]
+    queries = [q.strip() for q in state.get("followups") or [] if q and q.strip()][:cap]
     if not queries:
         queries = [brief.get("question") or state["initial_query"]]
     return [PlannedTopic(query=q, focus=focus) for q in queries]
 
 
-def _planned_queries(decision: PlanDecision, wave: int) -> list[PlannedTopic]:
+def _planned_queries(decision: PlanDecision, cap: int) -> list[PlannedTopic]:
     """Usable planner topics within this wave's cap; empty when it gave none."""
-    topics = [t for t in decision.topics if t.query and t.query.strip()][:3]
-    if wave > 0:
-        return topics[:2]
-    return topics
+    return [t for t in decision.topics if t.query and t.query.strip()][:cap]
 
 
 def _focus_errors(topics: list[PlannedTopic]) -> list[str]:
@@ -126,7 +132,12 @@ def _wave_topics(
 
 
 def _plan_decision(
-    state: ExactState, runtime: Runtime, brief: dict, prior: list[dict]
+    state: ExactState,
+    runtime: Runtime,
+    brief: dict,
+    prior: list[dict],
+    first_cap: int,
+    followup_cap: int,
 ) -> tuple[PlanDecision, list[dict]]:
     return invoke_structured(
         runtime.model("router"),
@@ -137,6 +148,8 @@ def _plan_decision(
                     brief=brief,
                     prior=render_prior_queries(prior) or "(none)",
                     followups=state.get("followups") or "(none)",
+                    first_cap=first_cap,
+                    followup_cap=followup_cap,
                 )
             ),
             HumanMessage(content="Plan sub-topics."),
@@ -148,7 +161,7 @@ def _plan_decision(
 
 
 def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
-    """Plan up to three wave topics.
+    """Plan up to the profile's topic cap for this wave.
 
     The planner is the only source of topics on every wave; unused follow-ups
     reach it through the prompt and come back as topics with a lane. A wave the
@@ -158,10 +171,13 @@ def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
     brief = state.get("brief") or {}
     prior = _prior_queries(state)
     wave = int(state.get("iteration") or 0)
-    fallback = _fallback_topics(state, brief)
+    first_cap, followup_cap = _topic_caps(state, runtime)
+    fallback = _fallback_topics(state, brief, followup_cap)
     errors: list[str] = []
     try:
-        decision, usage = _plan_decision(state, runtime, brief, prior)
+        decision, usage = _plan_decision(
+            state, runtime, brief, prior, first_cap, followup_cap
+        )
     except StructuredOutputError as exc:
         # Empty, not ``fallback``: ``_wave_topics`` substitutes the fallback.
         # ``PlanDecision``'s before-validator coerces str and dict only, so a
@@ -169,7 +185,7 @@ def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
         decision = PlanDecision(topics=[], reason="structured output fallback")
         usage = []
         errors = [str(exc)]
-    planned = _planned_queries(decision, wave)
+    planned = _planned_queries(decision, first_cap if wave == 0 else followup_cap)
     errors += _focus_errors(planned)
     topics = _wave_topics(planned, fallback, prior, wave)
     out: ExactState = {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 from langchain_core.messages import AIMessage
 
@@ -241,10 +242,17 @@ class FakeLLM:
 
 class FakeExa:
     def __init__(
-        self, hits: list[Source] | None = None, error: Exception | None = None
+        self,
+        hits: list[Source] | None = None,
+        error: Exception | None = None,
+        delay: float = 0.0,
     ):
         self._hits = hits
         self._error = error
+        self.delay = delay
+        self.active = 0
+        self.peak = 0
+        self._lock = threading.Lock()
         self.degraded: str | None = None
         self.search_nums: list[int] = []
         self.search_categories: list[str | None] = []
@@ -260,11 +268,26 @@ class FakeExa:
     def search(
         self, query: str, num: int = 5, *, category: str | None = None
     ) -> list[Source]:
+        self._enter()
+        try:
+            time.sleep(self.delay)
+        finally:
+            self._leave()
         self.search_nums.append(num)
         self.search_categories.append(category)
         return [
             h.model_copy(update={"focus": category or "web"}) for h in self._results()
         ]
+
+    def _enter(self) -> None:
+        """Record one more in-flight search and the high-water mark."""
+        with self._lock:
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+
+    def _leave(self) -> None:
+        with self._lock:
+            self.active -= 1
 
     def highlights(self, url: str) -> list[Source]:
         self.highlight_urls.append(url)
@@ -308,7 +331,7 @@ def runtime(
     if llms is not None:
         extras["llms"] = llms
     return Runtime(
-        settings=Settings(**settings),
+        settings=Settings(_env_file=None, **settings),
         llm=primary,
         extras=extras,
     )
@@ -318,8 +341,11 @@ def graph_seed(**overrides) -> dict:
     seed = {
         "initial_query": "What is X?",
         "skip_clarify": True,
+        "effort": "normal",
         "max_iterations": 3,
         "max_clarify_turns": 3,
+        "max_topics_first_wave": 3,
+        "max_topics_followup": 2,
         "clarify_turns": 0,
         "iteration": 0,
         "messages": [],

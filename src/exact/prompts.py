@@ -37,7 +37,7 @@ Clarification:
 PLAN = """Split the brief into independent research sub-topics.
 Each topic carries a search-oriented "query" and a "focus" lane.
 Use 1 topic when one lane covers the brief.
-Use 2-3 topics when the brief needs more than one lane, or compares entities.
+Use 2-{first_cap} topics when the brief needs more than one lane, or compares entities.
 Do not duplicate a query in the same lane.
 Pick the focus that fits the question:
 - people: roles, expertise, or named professionals. Shape the query with role, skill, company, location.
@@ -47,7 +47,7 @@ Pick the focus that fits the question:
 One wave may mix lanes, for example a people topic beside a publication topic.
 Do not invent a topic per lane when one lane covers the brief.
 Every suggested follow-up below must appear as a topic, in its own wording, with a focus.
-Order topics by importance: waves after the first keep the first two only.
+Order topics by importance: waves after the first keep the first {followup_cap} only.
 
 Brief:
 {brief}
@@ -78,7 +78,7 @@ Tool notes:
 
 REFLECT = """Compare findings to the research brief.
 If the brief is sufficiently covered, set done=true.
-If gaps remain and more research would help, set done=false and give 1-2 follow-up topic queries.
+If gaps remain and more research would help, set done=false and give 1-{followup_cap} follow-up topic queries.
 Do not repeat prior topics.
 
 Brief:

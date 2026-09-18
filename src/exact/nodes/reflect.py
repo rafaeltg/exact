@@ -32,12 +32,12 @@ def _cap_exit(iteration: int, titles: list[str], findings: list) -> ExactState:
     }
 
 
-def _followups(decision: ReflectDecision) -> list[str]:
-    return [q for q in decision.followups if q.strip()][:2]
+def _followups(decision: ReflectDecision, cap: int) -> list[str]:
+    return [q for q in decision.followups if q.strip()][:cap]
 
 
-def _decision_update(decision: ReflectDecision, iteration: int) -> ExactState:
-    followups = _followups(decision)
+def _decision_update(decision: ReflectDecision, iteration: int, cap: int) -> ExactState:
+    followups = _followups(decision, cap)
     if decision.done or not followups:
         return {
             "uncovered": decision.uncovered,
@@ -52,7 +52,9 @@ def _decision_update(decision: ReflectDecision, iteration: int) -> ExactState:
     }
 
 
-def _ask(runtime: Runtime, state: ExactState) -> tuple[ReflectDecision, list[dict]]:
+def _ask(
+    runtime: Runtime, state: ExactState, cap: int
+) -> tuple[ReflectDecision, list[dict]]:
     return invoke_structured(
         runtime.model("router"),
         ReflectDecision,
@@ -65,6 +67,7 @@ def _ask(runtime: Runtime, state: ExactState) -> tuple[ReflectDecision, list[dic
                         state.get("prior_queries") or (state.get("topics") or [])
                     )
                     or "(none)",
+                    followup_cap=cap,
                 )
             ),
             HumanMessage(content="Decide whether to continue."),
@@ -81,15 +84,16 @@ def reflect(state: ExactState, runtime: Runtime) -> ExactState:
     max_iter = int(state.get("max_iterations") or runtime.settings.max_iterations)
     titles = _titles(state.get("sources") or [])
     findings = state.get("findings") or []
+    cap = int(state.get("max_topics_followup") or runtime.settings.max_topics_followup)
     if iteration + 1 >= max_iter:
         return _cap_exit(iteration, titles, findings)
     try:
-        decision, usage = _ask(runtime, state)
+        decision, usage = _ask(runtime, state, cap)
     except StructuredOutputError as exc:
         out = _cap_exit(iteration, titles, findings)
         out["errors"] = [str(exc)]
         return out
-    out = _decision_update(decision, iteration)
+    out = _decision_update(decision, iteration, cap)
     out["prior_titles"] = titles
     out["usage"] = usage
     return out

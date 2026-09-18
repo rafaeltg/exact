@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from exact.cli import thread_config
 from exact.graph import build_graph
 from exact.models import (
     ClarificationOption,
@@ -344,3 +345,79 @@ def test_third_wave_forces_write():
             break
     assert nodes.count("research_agent") == 3
     assert nodes.count("write_report") == 1
+
+
+def _max_wave_runtime(exa: FakeExa | None = None) -> object:
+    return runtime(
+        exa=exa,
+        llm=FakeLLM(
+            plan=[
+                PlanDecision(topics=["a", "b", "c", "d"], reason="broad"),
+                PlanDecision(topics=["e", "f", "g"], reason="gaps"),
+            ],
+            reflect=[
+                ReflectDecision(done=False, followups=["e", "f", "g"], uncovered=[]),
+                ReflectDecision(done=True, followups=[], uncovered=[]),
+            ],
+        ),
+        exact_effort="max",
+    )
+
+
+def test_max_effort_fans_out_four_then_three_topics():
+    exa = FakeExa()
+    app = build_graph(_max_wave_runtime(exa))
+    config = _config("t-max-waves")
+    app.invoke(
+        graph_seed(
+            effort="max",
+            max_iterations=4,
+            max_topics_first_wave=4,
+            max_topics_followup=3,
+        ),
+        config,
+    )
+    ids = {f["topic_id"] for f in app.get_state(config).values["findings"]}
+    assert {"t0_1", "t0_2", "t0_3", "t0_4"} <= ids
+    assert {"t1_1", "t1_2", "t1_3"} <= ids
+    assert set(exa.search_nums) == {8}
+
+
+def test_a_checkpoint_without_the_cap_channels_falls_back_to_settings():
+    """A thread seeded before this feature reads the caps from the run's profile.
+
+    This is the library path. Through the CLI, ``_guard_effort`` refuses a
+    resume under any effort but the checkpoint's, so only ``normal`` reaches
+    here in a real run.
+    """
+    seed = graph_seed()
+    for key in ("effort", "max_topics_first_wave", "max_topics_followup"):
+        del seed[key]
+    app = build_graph(_max_wave_runtime())
+    config = _config("t-pre-upgrade")
+    app.invoke(seed, config)
+    ids = {f["topic_id"] for f in app.get_state(config).values["findings"]}
+    assert {"t0_1", "t0_2", "t0_3", "t0_4"} <= ids
+
+
+def _three_topic_runtime(exa: FakeExa) -> object:
+    return runtime(
+        exa=exa,
+        llm=FakeLLM(plan=PlanDecision(topics=["a", "b", "c"], reason="broad")),
+    )
+
+
+def test_one_worker_at_a_time_under_max_concurrency_one():
+    exa = FakeExa(delay=0.1)
+    build_graph(_three_topic_runtime(exa)).invoke(
+        graph_seed(), thread_config("t-c1", max_concurrency=1)
+    )
+    assert exa.peak == 1
+
+
+def test_workers_overlap_under_max_concurrency_three():
+    exa = FakeExa(delay=0.1)
+    build_graph(_three_topic_runtime(exa)).invoke(
+        graph_seed(), thread_config("t-c3", max_concurrency=3)
+    )
+    assert exa.peak >= 2

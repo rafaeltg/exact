@@ -149,8 +149,10 @@ clean.
 - **Sources:** do not invent sources. Gaps go in `uncovered` /
   `Finding.gaps`, not in claims. Writer citations must resolve;
   `audit_citations` is code, not an LLM.
-- **Bounds (do not loosen):** clarify turns ≤ 3; research waves ≤ 3;
-  topics/wave ≤ 3; tool rounds/worker ≤ 4; hits/call ≤ 5.
+- **Bounds (do not loosen):** ceilings are the `max` effort profile:
+  clarify turns ≤ 3; research waves ≤ 4; topics/wave ≤ 4 (follow-up ≤ 3);
+  tool rounds/worker ≤ 6; hits/call ≤ 8. A default run is `normal`:
+  3; 3; 3 (2); 4; 5.
 - **Scope:** CLI + SQLite checkpointer only. No HTTP API, web UI, or extra
   retrieval vendors. Out of scope: Firecrawl, MCP product, Elicit Reports,
   `create_supervisor`, parallel writers, PDF/paywall full text.

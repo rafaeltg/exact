@@ -270,3 +270,89 @@ def test_reflect_prompt_renders_a_pre_lane_checkpoint():
     )
     prompt = llm.with_structured_output(ReflectDecision).last_messages[0].content
     assert "define X [web]" in prompt
+
+
+def _four_topics() -> PlanDecision:
+    return PlanDecision(topics=["a", "b", "c", "d"], reason="broad")
+
+
+def _three_topics() -> PlanDecision:
+    return PlanDecision(topics=["a", "b", "c"], reason="broad")
+
+
+@pytest.mark.parametrize("effort, expected", [("max", 4), ("normal", 3)])
+def test_the_first_wave_keeps_the_profiles_topic_cap(effort: str, expected: int):
+    out = plan_topics(
+        _state(),
+        runtime(llm=FakeLLM(plan=_four_topics()), exact_effort=effort),
+    )
+    assert len(out["topics"]) == expected
+
+
+@pytest.mark.parametrize("effort, expected", [("max", 3), ("normal", 2)])
+def test_a_follow_up_wave_keeps_the_profiles_follow_up_cap(effort: str, expected: int):
+    out = plan_topics(
+        _state(iteration=1),
+        runtime(llm=FakeLLM(plan=_three_topics()), exact_effort=effort),
+    )
+    assert len(out["topics"]) == expected
+
+
+@pytest.mark.parametrize("effort, expected", [("max", 3), ("normal", 2)])
+def test_the_fallback_wave_keeps_the_profiles_follow_up_cap(effort: str, expected: int):
+    out = plan_topics(
+        _state(iteration=1, followups=["one", "two", "three"]),
+        runtime(llm=FakeLLM(fail_structured=True), exact_effort=effort),
+    )
+    assert [t["query"] for t in out["topics"]] == ["one", "two", "three"][:expected]
+
+
+@pytest.mark.parametrize("effort, expected", [("max", 3), ("normal", 2)])
+def test_reflect_keeps_the_profiles_follow_up_cap(effort: str, expected: int):
+    out = reflect(
+        {
+            "brief": {},
+            "findings": [],
+            "sources": [],
+            "topics": [],
+            "iteration": 0,
+            "max_iterations": 3,
+        },
+        runtime(
+            llm=FakeLLM(
+                reflect=ReflectDecision(
+                    done=False, followups=["one", "two", "three"], uncovered=[]
+                )
+            ),
+            exact_effort=effort,
+        ),
+    )
+    assert out["followups"] == ["one", "two", "three"][:expected]
+
+
+@pytest.mark.parametrize(
+    "effort, first, followup",
+    [
+        ("max", "Use 2-4 topics", "keep the first 3 only"),
+        ("normal", "Use 2-3 topics", "keep the first 2 only"),
+    ],
+)
+def test_the_plan_prompt_names_both_caps_of_the_profile(
+    effort: str, first: str, followup: str
+):
+    llm = FakeLLM()
+    plan_topics(_state(), runtime(llm=llm, exact_effort=effort))
+    prompt = llm.with_structured_output(PlanDecision).last_messages[0].content
+    assert first in prompt
+    assert followup in prompt
+
+
+@pytest.mark.parametrize("effort, expected", [("max", 3), ("normal", 2)])
+def test_the_reflect_prompt_names_the_follow_up_cap(effort: str, expected: int):
+    llm = FakeLLM()
+    reflect(
+        {"brief": {}, "findings": [], "iteration": 0, "max_iterations": 3},
+        runtime(llm=llm, exact_effort=effort),
+    )
+    prompt = llm.with_structured_output(ReflectDecision).last_messages[0].content
+    assert f"give 1-{expected} follow-up" in prompt

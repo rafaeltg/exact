@@ -1,8 +1,9 @@
 # Plan: Research effort levels (`normal` / `max`)
 
 **Status:** Ready to implement  
-**Spec impact:** Bounds, runtime, CLI — update `docs/spec.md` and `docs/architecture.md` in the same change  
-**Depends on:** [`exa-publication-and-focus-lanes.md`](exa-publication-and-focus-lanes.md) lands first  
+**Spec impact:** Bounds, runtime, CLI — bump `docs/spec.md` and `docs/architecture.md` to v1.5 in the same change  
+**Depends on:** [`exa-publication-and-focus-lanes.md`](exa-publication-and-focus-lanes.md) — landed (commit `e65c3ad`, spec v1.4). This plan builds on the `PlannedTopic` shape and the `PLAN` prompt that change left in place.  
+**Related:** [`trace-and-verbose-cli.md`](trace-and-verbose-cli.md) specifies a `run_start` settings snapshot that records `max_hits`, `max_iterations`, `max_tool_rounds` and `max_clarify_turns`. The §5 echo line and that event must name the same resolved values. Build both from one source.  
 **Out of scope:** LLM reasoning / thinking depth (a follow-up change); extra modes beyond two; changing role models; changing snippet / tool-text caps; HTTP API / web UI
 
 ---
@@ -128,7 +129,11 @@ bounded as the spec says.
 - Every cap read from state must fall back to a concrete settings value.
   `ExactState` is `total=False`, so `queries[:state.get("max_topics_first_wave")]`
   becomes `queries[:None]` on a thread seeded before this change and removes the
-  cap without a message.
+  cap without a message. [`reflect.py:81`](../../src/exact/nodes/reflect.py#L81)
+  already reads `max_iterations` this way. Follow that pattern.
+  [`clarify.py:68`](../../src/exact/nodes/clarify.py#L68) falls back to a literal
+  `3` in `ask_user` and `route_after_ask`, which have no `Runtime`. Clarify turns
+  are `3` in both profiles (§3), so that literal stays.
 - `max_hits` and `max_tool_rounds` **cannot** reach a worker through state.
   `research_agent` receives only `ResearchPayload` (`topic`, `brief`,
   `prior_titles`) and reads `runtime.settings`; `scout` does the same. These two
@@ -169,6 +174,11 @@ LangGraph.
   `EFFORT` and ignore `EXACT_EFFORT` without an error.
 - Add a single profile table (dict or small module) mapping effort → knob baselines.
 - Resolve settings as: profile baseline → explicit env overrides. No clamp on env.
+- Run the profile fill **inside** `Settings` (an `after` model validator), not only
+  in `get_settings()`. [`tests/fakes.py:311`](../../tests/fakes.py#L311) and
+  `tests/test_config.py` build `Settings(**kwargs)` directly and never call
+  `get_settings()`. A fill that lives outside the class leaves every fake with
+  `None` caps.
 - Topics / follow-up caps move from hard-coded slices onto Settings
   (`max_topics_first_wave`, `max_topics_followup`). Effort sets them; code reads
   settings or state only.
@@ -181,6 +191,11 @@ Files: [`src/exact/config.py`](../../src/exact/config.py), possibly new `src/exa
 - Add `--effort` to argparse with default `None`.
 - Resolve effort → `Settings` → `Runtime`, in that order (§4).
 - Pass resolved `max_concurrency` at the **top level** of the thread config.
+  [`thread_config`](../../src/exact/cli.py#L124) takes only `thread_id` today; it
+  gains the resolved concurrency as an argument.
+- [`format_usage`](../../src/exact/usage.py#L295) takes only the events list. The
+  effort label in the Usage block comes from the `effort` state channel that §6.0
+  seeds. `_print_report` reads it from the result and passes it in.
 - On resume with a mismatched resolved effort, exit with an error. An absent
   checkpoint key is `normal`, not an error.
 - Echo the resolved effort and knob values at run start (§5).
@@ -190,26 +205,33 @@ File: [`src/exact/cli.py`](../../src/exact/cli.py).
 
 ### 6.3 Graph consumers
 
-Four slices truncate topics, not two. Follow-ups truncate **twice**: once in
-`reflect`, again in `plan`. Raising only the `reflect` cap leaves `max` at two
-topics per follow-up wave.
+Four slices truncate topics, not two. Three prompt lines also state a cap (see
+the prompts bullet below). Follow-ups truncate **three** times: in `reflect`, in
+the planner slice for `wave > 0`, and in the fallback path of `plan`. Raising only
+the `reflect` cap leaves `max` at two topics per follow-up wave.
 
 | Site | Today | Becomes |
 | :--- | :--- | :--- |
-| [`plan.py:19`](../../src/exact/nodes/plan.py#L19) | `[:3]` | first-wave cap |
-| [`plan.py:23`](../../src/exact/nodes/plan.py#L23) | `[:2]` for `wave > 0` | follow-up cap |
-| [`plan.py:28`](../../src/exact/nodes/plan.py#L28) | `_followup_queries [:2]` | follow-up cap |
-| [`reflect.py:36`](../../src/exact/nodes/reflect.py#L36) | `_followups [:2]` | follow-up cap |
+| [`plan.py:43`](../../src/exact/nodes/plan.py#L43) `_planned_queries` | `[:3]` | first-wave cap |
+| [`plan.py:45`](../../src/exact/nodes/plan.py#L45) `_planned_queries` | `[:2]` for `wave > 0` | follow-up cap |
+| [`plan.py:35`](../../src/exact/nodes/plan.py#L35) `_fallback_topics` | `[:2]` on unused follow-ups | follow-up cap |
+| [`reflect.py:36`](../../src/exact/nodes/reflect.py#L36) `_followups` | `[:2]` | follow-up cap |
+
+`_followup_queries` no longer exists. The focus-lanes change removed it and moved
+the follow-up slice into `_fallback_topics`. `plan_topics` calls that function on
+every wave and uses its result only when the planner gives no usable topic. The planner is the only source of topics on every wave; unused
+follow-ups reach it through the `{followups}` prompt variable.
 
 - [`src/exact/nodes/research.py`](../../src/exact/nodes/research.py): already reads
   `max_tool_rounds` / `max_hits` from settings — confirm resolved values flow through.
 - [`src/exact/nodes/scout.py`](../../src/exact/nodes/scout.py): same for `max_hits`.
 - **Prompts carry the active cap.** A cap truncates; it cannot add a topic the model
-  never wrote. [`prompts.py:39`](../../src/exact/prompts.py#L39) says "Use 2-3
-  topics" and [`prompts.py:78`](../../src/exact/prompts.py#L78) says "give 1-2
-  follow-up topic queries". Make the cap a format variable in both. Truncation stays
-  as a guard, not as the mechanism. The `normal` rendering must equal the text the
-  focus-lanes change leaves in place, so `normal` stays today's behaviour.
+  never wrote. [`prompts.py:40`](../../src/exact/prompts.py#L40) says "Use 2-3
+  topics", [`prompts.py:50`](../../src/exact/prompts.py#L50) says "waves after the
+  first keep the first two only", and [`prompts.py:81`](../../src/exact/prompts.py#L81)
+  says "give 1-2 follow-up topic queries". Make the cap a format variable in all
+  three. Truncation stays as a guard, not as the mechanism. The `normal` rendering
+  must equal the text in `prompts.py` today, so `normal` stays today's behaviour.
 
 ### 6.4 LLM kwargs
 
@@ -218,15 +240,26 @@ keep their present ranges. See §11.1.
 
 ### 6.5 Docs (same change)
 
-- [`docs/spec.md`](../spec.md): graph bounds become "≤ profile / ≤ `max` ceiling";
-  document `--effort` / `EXACT_EFFORT`; table for both modes; precedence; the resume
-  rule; the process-scoped `max_hits` / `max_tool_rounds` exception; the measured
-  spend ratio from §8 step 5.
-- [`docs/architecture.md`](../architecture.md): Bounds section + runtime env table.
+- [`docs/spec.md`](../spec.md): bump to **1.5.0**. Graph bounds become "≤ profile /
+  ≤ `max` ceiling"; document `--effort` / `EXACT_EFFORT`; table for both modes;
+  precedence; the resume rule; the process-scoped `max_hits` / `max_tool_rounds`
+  exception; the measured spend ratio from §8 step 5. Sections that hold a fixed
+  number today: §1 item 5 (bounds), §2 Planner row ("2–3"), §3 Reflect exit ("≤2
+  follow-up topics"), §4 State (`max_iterations: int  # 3` and the new channels),
+  §7 `plan_topics` ("1–3; follow-up ≤2") and `research_agent` ("≤4") rows, §8
+  Runtime (Concurrency row; add an `--effort` / `EXACT_EFFORT` row).
+- [`docs/architecture.md`](../architecture.md): the Bounds block
+  ([`architecture.md:203-211`](../architecture.md#L203-L211)), the runtime env
+  table, and the diagram annotations `1..3` ([`:92`](../architecture.md#L92)) and
+  `<=4` ([`:95`](../architecture.md#L95), [`:147`](../architecture.md#L147)).
 - [`AGENTS.md`](../../AGENTS.md): replace fixed graph numbers with "ceilings = `max`
   profile; default run = `normal`". Leave the LLM rows as they are.
+- [`CONTRIBUTING.md`](../../CONTRIBUTING.md#L152-L153): restates the same bounds
+  line as `AGENTS.md`. Change it the same way.
 - [`.env.example`](../../.env.example): `EXACT_EFFORT=normal`.
-- [`README.md`](../../README.md): one short note on `--effort`.
+- [`README.md`](../../README.md#L19): "Spend is capped (3 clarify turns, 3 waves,
+  4 tool rounds per worker)" names the `normal` profile only. Rewrite that line and
+  add one short note on `--effort`.
 
 Use ASD-STE100 in plan/spec prose.
 
@@ -240,14 +273,27 @@ Use ASD-STE100 in plan/spec prose.
   `--effort max`. This is the test that catches a diff-against-default detector.
 - Unit: an env value above the `max` column loads without error.
 - Unit: invalid effort fails.
-- Node: plan/reflect truncate to the active caps, not to 3/2.
-- End to end: `reflect` → `plan_topics` under `max` yields three follow-up topics.
-  A `reflect`-only test passes while the downstream `plan` slice still cuts to two.
+- Node: plan/reflect truncate to the active caps, not to 3/2. Cover all three
+  follow-up sites of §6.3: `reflect`, the `wave > 0` planner slice, and
+  `_fallback_topics`.
+- End to end: under `max`, a wave-1 plan carries three topics. The planner is the
+  only topic source, so the test drives the fake planner to return three topics on
+  wave 1 and asserts three `Send` calls. A second test raises `StructuredOutputError`
+  with three unused follow-ups and asserts the fallback keeps all three. A
+  `reflect`-only test passes while the downstream `plan` slices still cut to two.
+- Prompt: the rendered `PLAN` and `REFLECT` text under `max` names the `max` caps.
+  Under `normal` it equals today's text, once the words "two" and "2-3" are the
+  digits the format variable renders.
 - Graph: a `max` first wave fans out **four** `Send` calls. Do not assert that the
   configured cap reads 4.
 - Concurrency: force `max_concurrency=1` against three fake topics and record peak
   concurrent `research_agent` entries. Do not assert the shape of the config dict. At
   the §3 values the bound never binds, so only a forced value proves the key is read.
+  Delete [`test_thread_config_sets_max_concurrency_to_3`](../../tests/test_cli.py#L43):
+  it pins the nested shape that §4 calls a bug.
+- Seeds: [`graph_seed`](../../tests/fakes.py#L317) mirrors `cli._seed`. Give it the
+  new channels, or add a test that shows the §5 settings fallback covers a seed
+  without them.
 - Seam: one test through the real `Runtime` build path asserts that `--effort max`
   reaches settings before the role LLMs exist. A test that injects `runtime=` passes
   on the broken path.
@@ -276,10 +322,9 @@ Use the test-design skill when writing tests.
 
 ## 8. Implementation order
 
-0. Land [`exa-publication-and-focus-lanes.md`](exa-publication-and-focus-lanes.md)
-   first. It owns the PLAN prompt rewrite and the spec v1.3 bump. This plan then
-   applies its topic caps to lane-tagged topics and rebases §6.3 onto the new
-   `PlannedTopic` shape.
+0. Done: [`exa-publication-and-focus-lanes.md`](exa-publication-and-focus-lanes.md)
+   landed in commit `e65c3ad` (spec v1.4). It owns the `PLAN` prompt and the
+   `PlannedTopic` shape. §6.3 is written against that code.
 1. Add `effort` profiles + settings resolve in `config` (and a small `effort`
    module if needed).
 2. Plumb CLI `--effort`, top-level concurrency, the run-start echo, and seed
@@ -293,7 +338,8 @@ Use the test-design skill when writing tests.
    same run, for both modes.
 6. Update spec, architecture, AGENTS, `.env.example`, README with the measured
    ratio.
-7. Run: `ruff check`, `ruff format --check`, `complexity-guard.py --check`, `pytest -q`.
+7. Run `make check` (lint, format-check, complexity, imports, workflow scripts,
+   tests).
 
 ---
 
@@ -310,7 +356,7 @@ Use the test-design skill when writing tests.
   it falls on `max`, the profile buys noise: either the write budget or the
   bibliography passed to WRITE must move with effort, in a follow-up.
 - Spec, architecture, and AGENTS describe the two modes and the new graph ceilings.
-- All quality gates in §8 step 7 are clean.
+- `make check` is clean.
 
 ---
 
@@ -331,7 +377,7 @@ Use the test-design skill when writing tests.
 | Resume | Resolved effort compared; absent key = `normal`; hits/rounds process-scoped |
 | Concurrency | Top-level config key; `normal` 3, `max` 4 |
 | Spend ratio | Measured in §8 step 5, then written to the spec |
-| Landing order | Focus lanes first |
+| Landing order | Focus lanes first (landed, spec v1.4); this plan bumps to v1.5 |
 | Naming | Product switch = `effort`; `Settings` field = `exact_effort` |
 
 ---
@@ -341,7 +387,8 @@ Use the test-design skill when writing tests.
 1. **Set reasoning and thinking from the profile in this change.** Rejected. A
    thinking budget above 0 stops Anthropic forcing a tool call, so the router can
    answer in prose, `invoke_structured` raises `StructuredOutputError`, `plan` falls
-   back to one topic and `reflect` takes `_cap_exit`. On the shipped Haiku-everywhere
+   back to the unused follow-ups (one topic on wave 0) and `reflect` takes
+   `_cap_exit`. On the shipped Haiku-everywhere
    config, `max` could research less than `normal` and cost more. The follow-up plan
    must first measure the error rate under thinking on the default model.
 2. **Keep thinking in the profile but switch it off for the router and compress
@@ -375,3 +422,57 @@ Use the test-design skill when writing tests.
 9. **Keep the "about 1.5–2× research spend" acceptance feel.** Rejected. The §3
    table gives about 2.8× model calls. A band that the table contradicts is not an
    acceptance criterion.
+
+---
+
+## 12. Calibration record
+
+**Date:** 2026-09-18
+**Query:** `Does intermittent fasting lower HbA1c in adults with type 2 diabetes, and which clinics offer supervised programs?`
+**Command:** `uv run exact "<query>" --skip-clarify --effort <normal|max>`, one new thread id for each run.
+**Transcripts:** `.claude/artifacts/plan/effor-levels/run-normal.txt`, `run-max.txt`
+
+| Value | `normal` | `max` |
+| :--- | ---: | ---: |
+| `total` spend | $0.8614 | $0.5995 |
+| `llm` calls | 48 | 29 |
+| Waves that ran | 3 | 1 |
+| Topics per wave | 3, 2, 2 | 4 |
+| Cited sources | 55 | 32 |
+| Retrieved sources | 314 | 263 |
+| Cited over retrieved | 0.175 | 0.122 |
+| Vendor errors | 0 | 1 (Exa HTTP 429) |
+
+**Ratio:** `total(max) / total(normal)` = **0.70**.
+
+### Read the ratio with care
+
+The two runs did not do the same quantity of work. `reflect` set `done` after
+wave 0 in the `max` run, but it asked for two more waves in the `normal` run.
+A wider first wave is itself a property of `max`, so the wave count and the
+profile are not separable from one sample. One run for each profile is thus not
+sufficient to show the spend of `max` against `normal`. The §3 table still
+gives about 2.8× the model calls when both profiles run to the wave cap.
+
+### Cited over retrieved fell on `max`
+
+The ratio fell from 0.175 to 0.122. §9 makes this the condition for a
+follow-up: the write budget or the bibliography that goes to `WRITE` must move
+with the effort. The `max` run put 263 sources in front of a writer with the
+same `EXACT_MAX_TOKENS_WRITE` cap as the `normal` run. Record the follow-up;
+do not change the cap in this plan.
+
+Note that the `max` run cited less because it ran one wave. The two causes are
+not separable from one sample.
+
+### Exa rate limit on `max`
+
+The `max` run got one HTTP 429 from Exa on `exa_publication_search`: *"You've
+exceeded your Exa rate limit of 10 requests per second."* The error came from a
+research worker, not from the scout: the scout of both runs reports `0 papers`
+and the `normal` run has no error. The probable cause is the fan-out of 4
+workers at the same time, each of which can call a search tool and
+`exa_highlights` in one round. This cause is a hypothesis; one transcript does
+not prove it. A second follow-up is thus open: measure the request rate of the
+`max` profile, then add a client-side rate limit or lower `max_concurrency` if
+the measurement confirms the cause.

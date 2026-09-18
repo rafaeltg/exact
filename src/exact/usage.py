@@ -292,12 +292,14 @@ def aggregate(events: list[dict[str, Any]]) -> dict[str, Any]:
     return totals
 
 
-def format_usage(events: list[dict[str, Any]]) -> list[str]:
+def format_usage(
+    events: list[dict[str, Any]], *, effort: str | None = None
+) -> list[str]:
     """CLI ``## Usage`` lines; empty when there are no events."""
     if not events:
         return []
     a = aggregate(events)
-    lines = ["## Usage"]
+    lines = ["## Usage" if effort is None else f"## Usage (effort={effort})"]
     unpriced = a["llm_unpriced_calls"]
     mark = f" + {unpriced} unpriced" if unpriced else ""
     lines.append(

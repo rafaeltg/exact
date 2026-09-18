@@ -3,16 +3,18 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
+from dotenv import load_dotenv
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
+from pydantic import ValidationError
 
-from exact.config import Runtime, Settings
+from exact.config import Runtime, Settings, effort_snapshot
 from exact.graph import build_graph
 from exact.nodes.write import format_references
-from exact.status import format_update
+from exact.status import format_effort, format_update
 from exact.usage import format_usage
 
 
@@ -57,8 +59,11 @@ def _seed(args, settings: Settings) -> dict:
     return {
         "initial_query": " ".join(args.query),
         "skip_clarify": args.skip_clarify,
+        "effort": settings.exact_effort,
         "max_iterations": settings.max_iterations,
         "max_clarify_turns": settings.max_clarify_turns,
+        "max_topics_first_wave": settings.max_topics_first_wave,
+        "max_topics_followup": settings.max_topics_followup,
         "clarify_turns": 0,
         "iteration": 0,
         "messages": [],
@@ -91,6 +96,15 @@ def _clarify_loop(app, config, read_reply: Callable[[], str]) -> dict:
         _stream(app, Command(resume=read_reply()), config)
 
 
+def _print_errors(errors: list[str]) -> None:
+    """Report each distinct run error once; waves repeat a failure verbatim."""
+    if not errors:
+        return
+    print("\n## Errors")
+    for err in dict.fromkeys(errors):
+        print(f"- {err}")
+
+
 def _print_report(result: dict) -> None:
     report = result.get("final_report") or ""
     if report:
@@ -98,13 +112,10 @@ def _print_report(result: dict) -> None:
         print(report)
     for line in format_references(result.get("sources") or []):
         print(line)
-    errors = result.get("errors") or []
-    if errors:
-        print("\n## Errors")
-        # Waves repeat a failure verbatim; report each distinct one once.
-        for err in dict.fromkeys(errors):
-            print(f"- {err}")
-    for line in format_usage(result.get("usage") or []):
+    _print_errors(result.get("errors") or [])
+    for line in format_usage(
+        result.get("usage") or [], effort=result.get("effort") or "normal"
+    ):
         print(line)
 
 
@@ -113,7 +124,37 @@ def _parse_argv(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("query", nargs="+", help="Research question")
     parser.add_argument("--skip-clarify", action="store_true")
     parser.add_argument("--thread-id", default=None)
+    # No ``choices``: an unknown value must fail with the same message the env
+    # path produces, not with argparse's own.
+    parser.add_argument(
+        "--effort",
+        default=None,
+        help="Research depth: normal (default) or max. Overrides EXACT_EFFORT.",
+    )
     return parser.parse_args(argv)
+
+
+def _effort_error(exc: ValidationError) -> str | None:
+    """The user-facing message for a rejected effort; ``None`` for anything else."""
+    for err in exc.errors():
+        if err["loc"] == ("exact_effort",):
+            return (
+                f"effort must be 'normal' or 'max'; got {err['input']!r} "
+                "(--effort or EXACT_EFFORT)"
+            )
+    return None
+
+
+def _resolve_settings(effort: str | None) -> Settings:
+    """Build the run's settings, with the flag winning over the environment."""
+    load_dotenv()
+    try:
+        return Settings(exact_effort=effort) if effort is not None else Settings()
+    except ValidationError as exc:
+        message = _effort_error(exc)
+        if message is None:
+            raise
+        raise SystemExit(message) from exc
 
 
 def _sqlite_saver(path: str) -> SqliteSaver:
@@ -121,9 +162,16 @@ def _sqlite_saver(path: str) -> SqliteSaver:
     return SqliteSaver(conn)
 
 
-def thread_config(thread_id: str) -> dict[str, Any]:
-    """LangGraph runnable config for a SQLite-backed CLI thread."""
-    return {"configurable": {"thread_id": thread_id, "max_concurrency": 3}}
+def thread_config(thread_id: str, *, max_concurrency: int) -> dict[str, Any]:
+    """LangGraph runnable config for a SQLite-backed CLI thread.
+
+    ``max_concurrency`` is a top-level key: LangGraph never reads it from
+    ``configurable``.
+    """
+    return {
+        "configurable": {"thread_id": thread_id},
+        "max_concurrency": max_concurrency,
+    }
 
 
 def _qa_exit(result: dict) -> int:
@@ -133,8 +181,20 @@ def _qa_exit(result: dict) -> int:
     return 0
 
 
-def _run(app, seed, config, read_reply: Callable[[], str]) -> dict:
-    snap = app.get_state(config)
+def _guard_effort(values: Mapping[str, Any], effort: str) -> None:
+    """Refuse a resume that would run a started thread at another depth."""
+    if not values:
+        return
+    stored = values.get("effort") or "normal"
+    if stored != effort:
+        raise SystemExit(
+            f"effort mismatch: thread ran with effort={stored}; "
+            f"this run resolved effort={effort}; "
+            f"rerun with --effort {stored} or use a new --thread-id"
+        )
+
+
+def _run(app, snap, seed, config, read_reply: Callable[[], str]) -> dict:
     if snap.next:
         return _clarify_loop(app, config, read_reply)
     if snap.values:
@@ -159,17 +219,20 @@ def main(
 ) -> int:
     """Run one research query; return 1 when dangling citations remain."""
     args = _parse_argv(argv)
-    runtime = runtime or Runtime.from_env()
+    runtime = runtime or Runtime.from_env(_resolve_settings(args.effort))
     saver = checkpointer or _sqlite_saver(runtime.settings.exact_db)
     app = build_graph(runtime, checkpointer=saver)
     thread_id = args.thread_id or str((new_id or uuid.uuid4)())
+    config = thread_config(thread_id, max_concurrency=runtime.settings.max_concurrency)
+    seed = _seed(args, runtime.settings)
+    snap = app.get_state(config)
     print(f"thread_id={thread_id}", flush=True)
-    result = _run(
-        app,
-        _seed(args, runtime.settings),
-        thread_config(thread_id),
-        read_reply or _read_reply,
+    _guard_effort(snap.values or {}, seed["effort"])
+    print(
+        format_effort(effort_snapshot(runtime.settings, snap.values or seed)),
+        flush=True,
     )
+    result = _run(app, snap, seed, config, read_reply or _read_reply)
     _print_report(result)
     return _qa_exit(result)
 

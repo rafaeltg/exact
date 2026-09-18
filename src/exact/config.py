@@ -1,18 +1,74 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Literal
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 type Role = Literal["router", "research", "compress", "write"]
+type Effort = Literal["normal", "max"]
 
 ROLES: tuple[Role, ...] = ("router", "research", "compress", "write")
+
+
+@dataclass(frozen=True)
+class Profile:
+    """One research-depth row: every graph cap a single effort level sets."""
+
+    max_iterations: int
+    max_clarify_turns: int
+    max_tool_rounds: int
+    max_hits: int
+    max_topics_first_wave: int
+    max_topics_followup: int
+    max_concurrency: int
+
+
+PROFILES: dict[Effort, Profile] = {
+    "normal": Profile(
+        max_iterations=3,
+        max_clarify_turns=3,
+        max_tool_rounds=4,
+        max_hits=5,
+        max_topics_first_wave=3,
+        max_topics_followup=2,
+        max_concurrency=3,
+    ),
+    "max": Profile(
+        max_iterations=4,
+        max_clarify_turns=3,
+        max_tool_rounds=6,
+        max_hits=8,
+        max_topics_first_wave=4,
+        max_topics_followup=3,
+        max_concurrency=4,
+    ),
+}
+
+# Only these four accept a MAX_* env override; the rest come from the profile.
+_PROFILE_ENV_KNOBS = (
+    "max_iterations",
+    "max_clarify_turns",
+    "max_tool_rounds",
+    "max_hits",
+)
+
+# A thread-scoped knob is fixed when the thread starts and lives in its state.
+_THREAD_SCOPED_KNOBS = (
+    "max_iterations",
+    "max_clarify_turns",
+    "max_topics_first_wave",
+    "max_topics_followup",
+)
+
+# A process-scoped knob follows the current shell, never the checkpoint.
+_PROCESS_SCOPED_KNOBS = ("max_tool_rounds", "max_hits", "max_concurrency")
 
 _ROLE_MODEL_FIELDS: dict[Role, str] = {
     "router": "exact_model_router",
@@ -49,11 +105,33 @@ class Settings(BaseSettings):
     exact_reasoning_effort: str = "none"
     exact_thinking_budget: int = 0
     exact_db: str = "exact.sqlite"
+    exact_effort: Effort = "normal"
     max_iterations: int = 3
     max_clarify_turns: int = 3
     max_tool_rounds: int = 4
     max_hits: int = 5
     http_timeout: float = 20.0
+
+    @model_validator(mode="after")
+    def _fill_from_profile(self) -> Settings:
+        """Fill every knob the environment did not set from the profile."""
+        profile = PROFILES[self.exact_effort]
+        for name in _PROFILE_ENV_KNOBS:
+            if name not in self.model_fields_set:
+                setattr(self, name, getattr(profile, name))
+        return self
+
+    @property
+    def max_topics_first_wave(self) -> int:
+        return PROFILES[self.exact_effort].max_topics_first_wave
+
+    @property
+    def max_topics_followup(self) -> int:
+        return PROFILES[self.exact_effort].max_topics_followup
+
+    @property
+    def max_concurrency(self) -> int:
+        return PROFILES[self.exact_effort].max_concurrency
 
 
 def _model_leaf(model: str) -> str:
@@ -138,6 +216,19 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def effort_snapshot(
+    settings: Settings, state: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Collect the caps one run resolved, thread-scoped values from ``state``."""
+    values = state or {}
+    snapshot: dict[str, Any] = {"effort": values.get("effort") or settings.exact_effort}
+    for name in _THREAD_SCOPED_KNOBS:
+        snapshot[name] = values.get(name) or getattr(settings, name)
+    for name in _PROCESS_SCOPED_KNOBS:
+        snapshot[name] = getattr(settings, name)
+    return snapshot
+
+
 def require_live_keys(settings: Settings) -> None:
     """Exit the process when required live API keys are missing."""
     if not settings.exa_api_key:
@@ -159,9 +250,10 @@ class Runtime:
         return (self.extras.get("llms") or {}).get(role) or self.llm
 
     @classmethod
-    def from_env(cls) -> Runtime:
-        """Build a live runtime from environment settings and role LLMs."""
-        settings = get_settings()
+    def from_env(cls, settings: Settings | None = None) -> Runtime:
+        """Build a live runtime from the given or the cached settings."""
+        if settings is None:
+            settings = get_settings()
         require_live_keys(settings)
         os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
         os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)

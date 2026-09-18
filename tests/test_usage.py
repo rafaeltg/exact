@@ -473,3 +473,17 @@ def test_decide_clarify_skips_when_thinking_breaks_structured_output():
     )
     assert out["clarify_needed"] is False
     assert out["errors"]
+
+
+def test_the_usage_heading_carries_the_effort_when_given():
+    events = [{"kind": "llm", "model": "claude-haiku-4-5", "calls": 1}]
+    assert format_usage(events, effort="max")[0] == "## Usage (effort=max)"
+
+
+def test_the_usage_heading_stays_bare_without_an_effort():
+    events = [{"kind": "llm", "model": "claude-haiku-4-5", "calls": 1}]
+    assert format_usage(events)[0] == "## Usage"
+
+
+def test_no_events_stay_empty_even_with_an_effort():
+    assert format_usage([], effort="max") == []

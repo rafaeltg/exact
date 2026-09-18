@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from exact.graph import build_graph
-from exact.status import format_plan, format_update
+from exact.status import format_effort, format_plan, format_update
 from tests.fakes import graph_seed, runtime
 
 
@@ -183,3 +183,21 @@ def test_plan_lines_show_focus():
 def test_plan_lines_tag_a_pre_focus_checkpoint_as_web():
     lines = format_plan([{"id": "t0_1", "query": "define X"}], wave=0)
     assert lines[1] == "  t0_1 [web]  define X"
+
+
+def test_format_effort_renders_every_resolved_cap():
+    line = format_effort(
+        {
+            "effort": "max",
+            "max_iterations": 4,
+            "max_clarify_turns": 3,
+            "max_topics_first_wave": 4,
+            "max_topics_followup": 3,
+            "max_tool_rounds": 6,
+            "max_hits": 8,
+            "max_concurrency": 4,
+        }
+    )
+    assert line == (
+        "effort=max waves=4 topics=4/3 rounds=6 hits=8 clarify=3 concurrency=4"
+    )
