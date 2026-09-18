@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 import pytest
 
 from exact.tools.exa import ExaClient
+
+FIXTURE = Path(__file__).parent / "fixtures" / "exa_publication_search.json"
+
+
+def _fixture_payload() -> dict:
+    """The captured Exa ``/search`` wire body for ``category="publication"``."""
+    return json.loads(FIXTURE.read_text())
 
 
 class _Item:
@@ -22,11 +31,20 @@ class _Result:
 
 
 class FakeExaSdk:
-    def __init__(self, results=None, error=None):
+    def __init__(self, results=None, error=None, payload=None):
         self.search_kwargs: list[dict] = []
         self.contents_urls: list = []
+        self.requests: list[tuple[str, dict]] = []
         self._results = results or []
         self._error = error
+        self._payload = payload
+
+    def request(self, endpoint: str, data: dict) -> dict:
+        """Mirror ``exa_py.Exa.request``; ``data`` is its parameter name."""
+        self.requests.append((endpoint, data))
+        if self._error:
+            raise self._error
+        return self._payload if self._payload is not None else _fixture_payload()
 
     def search_and_contents(self, query, **kwargs):
         self.search_kwargs.append(kwargs)
@@ -83,6 +101,24 @@ class _TimeoutThenOk:
             time.sleep(self._delay)
             return _Result([])
         return _Result(self._results)
+
+
+def _entity_props(result: dict) -> dict:
+    for ent in result.get("entities") or []:
+        if ent.get("type") == "publication":
+            return ent.get("properties") or {}
+    return {}
+
+
+def test_publication_fixture_holds_abstract_and_doi():
+    payload = _fixture_payload()
+    results = payload.get("results") or []
+    assert results
+    assert any(_entity_props(r).get("abstract") for r in results)
+    assert any(
+        _entity_props(r).get("doi") or "doi.org" in (r.get("url") or "")
+        for r in results
+    )
 
 
 def test_exa_search_passes_five_hits():
@@ -266,3 +302,178 @@ def test_exa_retries_once_on_timeout(method: str, args: tuple) -> None:
     with pytest.raises(TimeoutError):
         getattr(client, method)(*args)
     assert sdk.calls == 2
+
+
+class _NoRequestSdk:
+    """An SDK build with no ``request`` attribute, as exa-py 1.x had."""
+
+    def __init__(self, results=None):
+        self.search_kwargs: list[dict] = []
+        self._results = results or []
+
+    def search_and_contents(self, query, **kwargs):
+        self.search_kwargs.append(kwargs)
+        return _Result(self._results)
+
+
+def test_search_passes_publication_category_and_stamps_focus():
+    sdk = FakeExaSdk()
+    got = _client(sdk).search("GLP-1 trials", num=5, category="publication")
+    assert sdk.requests[0][0] == "/search"
+    assert sdk.requests[0][1]["category"] == "publication"
+    assert {s.focus for s in got} == {"publication"}
+
+
+def test_plain_search_stamps_web_focus():
+    sdk = FakeExaSdk(results=[_Item(title="A", url="https://example.com/a")])
+    assert _client(sdk).search("What is X?", num=5)[0].focus == "web"
+
+
+def test_search_passes_any_category_through():
+    sdk = FakeExaSdk(results=[_Item(title="A", url="https://example.com/a")])
+    got = _client(sdk).search("news", num=5, category="news")
+    assert sdk.search_kwargs[0]["category"] == "news"
+    # An unrecognized category is not a lane, so its hits read as web.
+    assert got[0].focus == "web"
+
+
+def test_highlights_leave_focus_and_doi_unset():
+    sdk = FakeExaSdk(
+        results=[_Item(title="A", url="https://doi.org/10.1/x", highlights=["X"])]
+    )
+    got = _client(sdk).highlights("https://doi.org/10.1/x")
+    assert got[0].focus is None
+    assert got[0].doi is None
+
+
+def test_publication_search_uses_raw_request_with_contents():
+    sdk = FakeExaSdk()
+    got = _client(sdk).search("GLP-1 trials", num=5, category="publication")
+    body = sdk.requests[0][1]
+    assert body["contents"] == {"highlights": True}
+    assert body["numResults"] == 5
+    assert not [k for k in body if "_" in k]
+    assert got
+    assert any(s.doi for s in got)
+    assert any(len(s.snippet) > 200 for s in got)
+
+
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        (
+            {
+                "url": "https://example.com/a",
+                "entities": [
+                    {"type": "publication", "properties": {"doi": "10.1/entity"}}
+                ],
+            },
+            "10.1/entity",
+        ),
+        ({"url": "https://dx.DOI.org/10.5/url"}, "10.5/url"),
+        ({"url": "https://doi.org/10.7/q?utm=x#frag"}, "10.7/q"),
+        ({"url": "https://example.com/paper"}, None),
+        ({"url": "https://doi.org/not-a-doi"}, None),
+    ],
+)
+def test_doi_mapping(result, expected):
+    sdk = FakeExaSdk(payload={"results": [{"title": "A", **result}]})
+    got = _client(sdk).search("q", num=5, category="publication")
+    assert got[0].doi == expected
+
+
+def test_publication_snippet_leads_with_metadata():
+    sdk = FakeExaSdk(
+        payload={
+            "results": [
+                {
+                    "title": "A trial",
+                    "url": "https://doi.org/10.1/x",
+                    "highlights": ["ignored when an abstract exists"],
+                    "entities": [
+                        {
+                            "type": "publication",
+                            "properties": {
+                                "authors": [{"name": "Jane Doe"}],
+                                "year": 2025,
+                                "citationCount": 12,
+                                "abstract": "The abstract body.",
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    got = _client(sdk).search("q", num=5, category="publication")
+    assert got[0].snippet.startswith("Jane Doe (2025), 12 citations.")
+    assert "The abstract body." in got[0].snippet
+    assert "ignored" not in got[0].snippet
+
+
+def test_publication_without_abstract_falls_back_to_highlights():
+    sdk = FakeExaSdk(
+        payload={
+            "results": [
+                {
+                    "title": "A trial",
+                    "url": "https://doi.org/10.1/x",
+                    "highlights": ["The highlight body."],
+                    "entities": [
+                        {
+                            "type": "publication",
+                            "properties": {"authors": [{"name": "Jane Doe"}]},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    assert (
+        "The highlight body."
+        in _client(sdk).search("q", num=5, category="publication")[0].snippet
+    )
+
+
+def test_missing_request_sets_degraded():
+    sdk = _NoRequestSdk(results=[_Item(title="A", url="https://example.com/a")])
+    client = _client(sdk)
+    got = client.search("q", num=5, category="publication")
+    assert got
+    assert got[0].focus == "publication"
+    assert sdk.search_kwargs[0]["category"] == "publication"
+    assert client.degraded is not None
+    assert "DOI" in client.degraded
+
+
+def test_raw_request_path_leaves_degraded_unset():
+    client = _client(FakeExaSdk())
+    client.search("q", num=5, category="publication")
+    assert client.degraded is None
+
+
+@pytest.mark.parametrize(
+    "count, has_et_al",
+    [(2, False), (3, False), (4, True)],
+)
+def test_publication_author_list_caps_at_three_names(count: int, has_et_al: bool):
+    authors = [{"name": f"Author {i}"} for i in range(count)]
+    sdk = FakeExaSdk(
+        payload={
+            "results": [
+                {
+                    "title": "A trial",
+                    "url": "https://doi.org/10.1/x",
+                    "entities": [
+                        {
+                            "type": "publication",
+                            "properties": {"authors": authors, "year": 2025},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    snippet = _client(sdk).search("q", num=5, category="publication")[0].snippet
+    assert ("et al." in snippet) is has_et_al
+    assert "Author 0" in snippet

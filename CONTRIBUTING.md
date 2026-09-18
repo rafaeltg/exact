@@ -23,7 +23,7 @@ make setup
 # 3. Env file (live CLI only; pytest must not hit the network)
 cp .env.example .env
 # set EXA_API_KEY and ANTHROPIC_API_KEY (or OPENAI_API_KEY)
-# optional: ELICIT_API_KEY for academic paper search
+# ELICIT_API_KEY is reserved for the dormant Elicit client; no live code reads it
 # set EXACT_GITHUB_USER for /commit and /create-pr (gh auth switch)
 
 # 4. Run the gate (lint + format-check + complexity + workflow scripts + tests)

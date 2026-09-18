@@ -31,12 +31,14 @@ def source(
     provider: str = "exa",
     snippet: str | None = None,
     doi: str | None = None,
+    focus: str | None = None,
 ) -> Source:
     return Source(
         id=id,
         title=title,
         url=url,
         doi=doi,
+        focus=focus,
         snippet=snippet or "X is Y according to this page.",
         provider=provider,
         retrieved_at="2026-01-01T00:00:00Z",
@@ -243,6 +245,7 @@ class FakeExa:
     ):
         self._hits = hits
         self._error = error
+        self.degraded: str | None = None
         self.search_nums: list[int] = []
         self.search_categories: list[str | None] = []
         self.highlight_urls: list[str] = []
@@ -259,11 +262,16 @@ class FakeExa:
     ) -> list[Source]:
         self.search_nums.append(num)
         self.search_categories.append(category)
-        return self._results()
+        return [
+            h.model_copy(update={"focus": category or "web"}) for h in self._results()
+        ]
 
     def highlights(self, url: str) -> list[Source]:
         self.highlight_urls.append(url)
-        return self._results()
+        # The real client cannot know a lane or a DOI from a bare URL read.
+        return [
+            h.model_copy(update={"focus": None, "doi": None}) for h in self._results()
+        ]
 
 
 class FakeElicit:

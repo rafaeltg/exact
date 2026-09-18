@@ -1,16 +1,16 @@
-# Exact — Architecture (ODR v1.2)
+# Exact — Architecture (ODR v1.4)
 
-Contract: [spec.md](./spec.md) v1.2.0. LangChain [Open Deep Research](https://www.langchain.com/blog/open-deep-research) pipeline. Tools: Exa + Elicit. Clarification grounded in scout.
+Contract: [spec.md](./spec.md) v1.4.0. LangChain [Open Deep Research](https://www.langchain.com/blog/open-deep-research) pipeline. Tools: Exa. Clarification grounded in scout. `Source` carries a `focus` lane.
 
 ```
  User                         exact                         vendors
   |                             |                              |
   |  query                      |                              |
   |---------------------------->|  scout highlights ---------> Exa
-  |                             |  scout papers .............> Elicit
+  |                             |  scout papers .............> Exa (publication)
   |  clarify? (0..3 turns)      |                              |
   |<--------------------------->|                              |
-  |                             |  tool loop ----------------> Exa / Elicit
+  |                             |  tool loop ----------------> Exa
   |                             |  role LLMs (temp 0) -------> LLM
   |  cited report               |                              |
   |<----------------------------|                              |
@@ -130,7 +130,7 @@ If the model sets `needed=true` and scout hits exist, the question must contain 
 
 Routing flags `clarify_needed` and `continue_research` live on state (replace). Structured LLM parse failures skip clarify, fall back to a query brief / single topic, or force write — they do not crash the run.
 
-Scout Elicit uses the query academic heuristic only (scout is before clarify). Brief intent also promotes `web` → `academic` when clarification text or a picked option label/description matches the heuristic.
+The scout publication lane uses the query academic heuristic only (scout is before clarify); no key gates it. Brief intent also promotes `web` → `academic` when clarification text or a picked option label/description matches the heuristic.
 
 ---
 
@@ -145,7 +145,7 @@ Scout Elicit uses the query academic heuristic only (scout is before clarify). B
  research_agent     research_agent
    create_agent         ...
    ModelCallLimitMiddleware(run_limit<=4)
-   exa_search / exa_people_search / exa_company_search / exa_highlights / elicit_search
+   one lane search tool (by topic focus) + exa_highlights
       |                  |
    prune -> Finding      prune
       +--------+---------+
@@ -166,12 +166,12 @@ Parent never sees raw tool I/O. The worker ReAct loop is an ephemeral LangChain 
  exa_people_search   people profiles (category=people), 5 hits
  exa_company_search  company profiles (category=company), 5 hits
  exa_highlights      read a known URL (not full page)
- elicit_search       papers, 5 abstracts, gated
+ exa_publication_search  papers with abstract + DOI (category=publication), 5 hits, bound by focus
 ```
 
-Scout always uses general Exa search (no people/company category). Planner topic strings steer people vs company vs news-shaped web; the research agent picks the tool. People/company entity metadata is folded into `Source.snippet`.
+Scout runs a general Exa search, plus an Exa `category=publication` search on an academic signal; the lanes are interleaved before ids are minted. The planner assigns each topic a `focus` lane, and the worker binds only that lane's search tool plus `exa_highlights` — the agent no longer picks between categories. The planner is the only source of topics on every wave; topics are `{query, focus}` and identity is the pair. A wave with no usable planner topic falls back to the unused follow-ups, else the brief question; the fallback skips the cross-wave dedup, because no planner rephrased it around `prior`, so a retry of a failed lane still runs. Entity metadata (person, company, publication) is folded into `Source.snippet`.
 
-`ExaClient` accepts an injected SDK and a clock. Each search and highlights call uses the HTTP timeout. `ElicitClient` accepts an injected `post` and a clock. Each client retries once on timeout, HTTP 429, or HTTP 5xx.
+`ExaClient` accepts an injected SDK and a clock. Each search and highlights call uses the HTTP timeout. `ElicitClient` is dormant: it accepts an injected `post` and a clock, but no live path builds it. Each client retries once on timeout, HTTP 429, or HTTP 5xx.
 
 ---
 

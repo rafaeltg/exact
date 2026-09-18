@@ -35,14 +35,19 @@ Clarification:
 """
 
 PLAN = """Split the brief into independent research sub-topics.
-Use 1 topic for a simple single-entity question.
-Use 2-3 topics for comparisons, lists, or multi-entity questions.
-Each topic is a search-oriented query string. Do not duplicate.
-Shape each topic so the researcher picks the right Exa tool:
-- People, roles, expertise, or named professionals → people query (role, skill, company, location).
-- Organizations, funding, headcount, competitors, or company facts → company query.
-- Recent events or press coverage → news-shaped web query (time and outlet cues in the string).
-- Else general web. Do not invent parallel topics for every mode.
+Each topic carries a search-oriented "query" and a "focus" lane.
+Use 1 topic when one lane covers the brief.
+Use 2-3 topics when the brief needs more than one lane, or compares entities.
+Do not duplicate a query in the same lane.
+Pick the focus that fits the question:
+- people: roles, expertise, or named professionals. Shape the query with role, skill, company, location.
+- company: organizations, funding, headcount, competitors, or org facts.
+- publication: academic or empirical questions, papers, trials, evidence.
+- web: everything else, including recent events and press coverage. Put time and outlet cues in the query.
+One wave may mix lanes, for example a people topic beside a publication topic.
+Do not invent a topic per lane when one lane covers the brief.
+Every suggested follow-up below must appear as a topic, in its own wording, with a focus.
+Order topics by importance: waves after the first keep the first two only.
 
 Brief:
 {brief}
@@ -51,11 +56,9 @@ Suggested follow-ups: {followups}
 """
 
 RESEARCH_SYS = """You are a research sub-agent. Focus ONLY on this topic.
-Use tools to search.
-Prefer exa_people_search when the topic is about people, roles, or expertise.
-Prefer exa_company_search when the topic is about companies, funding, or org facts.
-Prefer exa_search for general web and news, then exa_highlights on the best URLs.
-Use elicit_search only for academic/empirical questions when the tool is available.
+This topic is on the {focus} lane. You hold the search tool for that lane and
+exa_highlights. Use only the tools you are given; no other lane is yours.
+Search first, then call exa_highlights on the best URLs you found.
 Do not invent sources. After you have enough, stop calling tools.
 Topic: {topic}
 Brief must_cover: {must_cover}

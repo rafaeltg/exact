@@ -89,8 +89,8 @@ def test_retrieval_failure_still_finishes_the_graph():
     assert app.get_state(config).next == ()
     assert result["final_report"] == "No sources found."
     assert result["errors"]
-    assert result["findings"][0]["gaps"] == ["retrieval failed"]
-    assert "retrieval failed" in result["uncovered"]
+    assert result["findings"][0]["gaps"] == ["lane web: retrieval failed"]
+    assert "lane web: retrieval failed" in result["uncovered"]
 
 
 def test_parent_messages_are_the_clarify_thread_only():

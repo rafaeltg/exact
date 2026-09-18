@@ -1,6 +1,6 @@
 # exact
 
-CLI Open Deep Research agent on LangGraph. Tools are **Exa** and **Elicit** only. Clarification is grounded in an Exa (optional Elicit) scout. Contract: [docs/spec.md](docs/spec.md) v1.2. Architecture: [docs/architecture.md](docs/architecture.md).
+CLI Open Deep Research agent on LangGraph. Tools are **Exa** only; the Elicit client is dormant. Clarification is grounded in an Exa scout. Contract: [docs/spec.md](docs/spec.md) v1.4. Architecture: [docs/architecture.md](docs/architecture.md).
 
 ## Commands
 
@@ -34,7 +34,7 @@ If you change topology, bounds, tools, or citation rules, update `docs/spec.md` 
 - Scout before clarify. Questions must cite scout titles unless scout is empty.
 - Isolated `research_agent` workers via `Send`. Parent never sees raw tool I/O. Prune to `Finding` before returning.
 - Source ids: `src_{topic}_{i}`. Writer citations must resolve; `audit_citations` is code, not an LLM.
-- Retrieval failure: append `errors` and `gaps=["retrieval failed"]`. The graph still finishes.
+- Retrieval failure: append `errors` and `gaps=["lane <focus>: retrieval failed"]`. The graph still finishes.
 - `messages` is the clarify thread only.
 
 ## Code

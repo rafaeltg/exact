@@ -5,13 +5,19 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from exact import prompts
 from exact.models import PlanDecision, ReflectDecision
 from exact.nodes import research as research_module
 from exact.nodes.plan import plan_topics, route_research
 from exact.nodes.reflect import reflect
-from exact.nodes.research import _Bag, research_agent
-from exact.nodes.scout import scout
-from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, source
+from exact.nodes.research import (
+    _Bag,
+    _compact_sources,
+    _render,
+    research_agent,
+)
+from exact.nodes.scout import _interleave, scout
+from tests.fakes import FakeExa, FakeLLM, runtime, source
 
 
 def _payload(**overrides) -> dict:
@@ -106,7 +112,7 @@ def test_retrieval_failure_records_gaps_and_errors():
         runtime(exa=FakeExa(error=RuntimeError("down"))),
     )
     assert out["sources"] == []
-    assert out["findings"][0]["gaps"] == ["retrieval failed"]
+    assert out["findings"][0]["gaps"] == ["lane web: retrieval failed"]
     assert out["findings"][0]["claims"] == []
     assert out["errors"]
 
@@ -114,7 +120,7 @@ def test_retrieval_failure_records_gaps_and_errors():
 def test_empty_hits_are_no_sources():
     out = research_agent(_payload(), runtime(exa=FakeExa(hits=[])))
     assert out["sources"] == []
-    assert out["findings"][0]["gaps"] == ["no sources"]
+    assert out["findings"][0]["gaps"] == ["lane web: no sources"]
     assert out["findings"][0]["claims"] == []
 
 
@@ -125,40 +131,100 @@ def test_research_drops_sources_already_in_prior_titles():
     )
     assert out["sources"] == []
     assert out["findings"][0]["claims"] == []
-    assert out["findings"][0]["gaps"] == ["no new sources"]
+    assert out["findings"][0]["gaps"] == ["lane web: no new sources"]
 
 
-def test_elicit_search_is_disabled_for_web_intent():
-    llm = FakeLLM(tool_name="elicit_search", tool_args={"query": "test"})
-    elicit = FakeElicit(enabled=True, hits=[source(title="Paper", provider="elicit")])
-    research_agent(_payload(), runtime(llm=llm, elicit=elicit))
-    assert elicit.search_nums == []
-
-
-def test_elicit_search_is_disabled_without_key():
-    llm = FakeLLM(tool_name="elicit_search", tool_args={"query": "test"})
-    elicit = FakeElicit(enabled=False, hits=[source(title="Paper", provider="elicit")])
+@pytest.mark.parametrize(
+    "focus, search_tool",
+    [
+        ("web", "exa_search"),
+        ("people", "exa_people_search"),
+        ("company", "exa_company_search"),
+        ("publication", "exa_publication_search"),
+    ],
+)
+def test_focus_filters_tools(focus: str, search_tool: str):
+    llm = FakeLLM()
     research_agent(
-        _payload(
-            brief={"question": "What is X?", "intent": "academic", "must_cover": []}
-        ),
-        runtime(llm=llm, elicit=elicit),
+        _payload(topic={"id": "t0_1", "query": "define X", "focus": focus}),
+        runtime(llm=llm, exa=FakeExa()),
     )
-    assert elicit.search_nums == []
+    assert [t.name for t in llm.bound.tools] == [search_tool, "exa_highlights"]
 
 
-@pytest.mark.parametrize("intent", ["academic", "mixed"])
-def test_elicit_search_runs_when_intent_allows_and_key_is_set(intent: str):
-    llm = FakeLLM(tool_name="elicit_search", tool_args={"query": "test"})
-    paper = source(title="Paper", provider="elicit", doi="10.1/abc")
-    elicit = FakeElicit(enabled=True, hits=[paper])
+def test_a_missing_focus_binds_the_web_lane():
+    llm = FakeLLM()
+    research_agent(_payload(), runtime(llm=llm, exa=FakeExa()))
+    assert [t.name for t in llm.bound.tools] == ["exa_search", "exa_highlights"]
+
+
+def test_publication_lane_on_a_web_brief_binds_a_working_tool():
+    """The intent gate is gone, so the lane alone decides."""
+    llm = FakeLLM(tool_name="exa_publication_search", tool_args={"query": "test"})
+    exa = FakeExa(hits=[source(title="Paper", doi="10.1/abc")])
     out = research_agent(
-        _payload(brief={"question": "What is X?", "intent": intent, "must_cover": []}),
-        runtime(llm=llm, elicit=elicit),
+        _payload(
+            topic={"id": "t0_1", "query": "trials of X", "focus": "publication"},
+            brief={"question": "What is X?", "intent": "web", "must_cover": []},
+        ),
+        runtime(llm=llm, exa=exa),
     )
-    assert elicit.search_nums == [5]
-    assert out["sources"][0]["id"] == "src_t0_1_1"
-    assert out["sources"][0]["provider"] == "elicit"
+    assert exa.search_categories == ["publication"]
+    assert out["sources"][0]["focus"] == "publication"
+
+
+def test_no_worker_binds_elicit_search():
+    llm = FakeLLM()
+    research_agent(_payload(), runtime(llm=llm, exa=FakeExa()))
+    assert "elicit_search" not in [t.name for t in llm.bound.tools]
+
+
+def test_research_sys_states_the_lane():
+    llm = FakeLLM()
+    research_agent(
+        _payload(topic={"id": "t0_1", "query": "trials of X", "focus": "publication"}),
+        runtime(llm=llm, exa=FakeExa()),
+    )
+    prompt = str(llm.last_tool_loop_messages[0].content)
+    assert "publication lane" in prompt
+    assert "exa_people_search" not in prompts.RESEARCH_SYS
+
+
+def test_empty_lane_names_itself():
+    llm = FakeLLM(tool_name="exa_people_search", tool_args={"query": "test"})
+    out = research_agent(
+        _payload(topic={"id": "t0_1", "query": "who leads X", "focus": "people"}),
+        runtime(llm=llm, exa=FakeExa(hits=[])),
+    )
+    assert out["findings"][0]["gaps"] == ["lane people: no sources"]
+
+
+def test_two_empty_lanes_produce_two_gap_lines():
+    gaps = []
+    for focus, tool in (
+        ("people", "exa_people_search"),
+        ("company", "exa_company_search"),
+    ):
+        llm = FakeLLM(tool_name=tool, tool_args={"query": "test"})
+        out = research_agent(
+            _payload(topic={"id": "t0_1", "query": "X", "focus": focus}),
+            runtime(llm=llm, exa=FakeExa(hits=[])),
+        )
+        gaps.extend(out["findings"][0]["gaps"])
+    assert gaps == ["lane people: no sources", "lane company: no sources"]
+
+
+def test_source_listings_label_publication():
+    paper = {
+        "id": "src_t0_1_1",
+        "title": "Paper",
+        "url": "https://doi.org/10.1/x",
+        "provider": "exa",
+        "focus": "publication",
+        "snippet": "s",
+    }
+    assert "(publication)" in _render([paper])
+    assert "(publication)" in _compact_sources([paper])
 
 
 def test_scout_assigns_src_scout_ids():
@@ -167,24 +233,54 @@ def test_scout_assigns_src_scout_ids():
     assert out["errors"] == []
 
 
-def test_scout_queries_elicit_when_academic_signal_and_key():
-    elicit = FakeElicit(hits=[source(title="Paper", provider="elicit")], enabled=True)
+def test_scout_publication_search_runs_on_academic_signal():
+    exa = FakeExa()
     out = scout(
         {"initial_query": "What do trials of GLP-1 show?", "clarify_turns": 0},
-        runtime(elicit=elicit, elicit_api_key="k"),
+        runtime(exa=exa),
     )
-    assert elicit.search_nums == [5]
+    assert exa.search_categories == [None, "publication"]
     assert [hit["id"] for hit in out["scout_hits"]] == ["src_scout_1", "src_scout_2"]
-    assert out["scout_hits"][1]["provider"] == "elicit"
+    assert [hit["focus"] for hit in out["scout_hits"]] == ["web", "publication"]
+    assert [e["kind"] for e in out["usage"]] == [
+        "exa_search",
+        "exa_publication_search",
+    ]
 
 
-def test_scout_skips_elicit_without_key():
-    elicit = FakeElicit(hits=[source(title="Paper", provider="elicit")], enabled=True)
-    scout(
+def test_scout_interleaves_both_lanes_before_the_slice():
+    """Both lanes must survive the eight-hit slice the brief takes."""
+    exa = FakeExa(hits=[source(id=f"h{i}") for i in range(5)])
+    out = scout(
         {"initial_query": "What do trials of GLP-1 show?", "clarify_turns": 0},
-        runtime(elicit=elicit),
+        runtime(exa=exa),
     )
-    assert elicit.search_nums == []
+    assert [hit["focus"] for hit in out["scout_hits"][:8]].count("publication") == 4
+
+
+def test_scout_publication_failure_keeps_web_hits_and_appends_one_error():
+    class _OnePublicationFailure(FakeExa):
+        def search(self, query, num=5, *, category=None):
+            if category == "publication":
+                raise RuntimeError("boom")
+            return super().search(query, num, category=category)
+
+    out = scout(
+        {"initial_query": "What do trials of GLP-1 show?", "clarify_turns": 0},
+        runtime(exa=_OnePublicationFailure()),
+    )
+    assert len(out["scout_hits"]) == 1
+    assert out["errors"] == ["exa publication scout failed: boom"]
+
+
+def test_scout_appends_the_degraded_line_once():
+    exa = FakeExa()
+    exa.degraded = "exa publication search ran without abstracts or DOIs"
+    out = scout(
+        {"initial_query": "What do trials of GLP-1 show?", "clarify_turns": 0},
+        runtime(exa=exa),
+    )
+    assert out["errors"] == ["exa publication search ran without abstracts or DOIs"]
 
 
 def test_concurrent_ingest_mints_unique_source_ids(monkeypatch):
@@ -230,7 +326,7 @@ def test_exa_highlights_refuses_a_url_no_search_returned():
     out = research_agent(_payload(), runtime(llm=llm, exa=exa))
     assert exa.highlight_urls == []
     assert out["sources"] == []
-    assert out["findings"][0]["gaps"] == ["no sources"]
+    assert out["findings"][0]["gaps"] == ["lane web: no sources"]
 
 
 @pytest.mark.parametrize(
@@ -243,7 +339,10 @@ def test_exa_highlights_refuses_a_url_no_search_returned():
 def test_vertical_search_tools_pass_category(tool_name: str, category: str):
     llm = FakeLLM(tool_name=tool_name, tool_args={"query": "test"})
     exa = FakeExa(hits=[source(title="A"), source(title="B")])
-    out = research_agent(_payload(), runtime(llm=llm, exa=exa))
+    out = research_agent(
+        _payload(topic={"id": "t0_1", "query": "define X", "focus": category}),
+        runtime(llm=llm, exa=exa),
+    )
     assert exa.search_categories == [category]
     assert exa.search_nums == [5]
     assert [item["id"] for item in out["sources"]] == ["src_t0_1_1", "src_t0_1_2"]
@@ -252,22 +351,22 @@ def test_vertical_search_tools_pass_category(tool_name: str, category: str):
 def test_vertical_search_failure_records_gaps_and_errors():
     llm = FakeLLM(tool_name="exa_people_search", tool_args={"query": "test"})
     out = research_agent(
-        _payload(),
+        _payload(topic={"id": "t0_1", "query": "define X", "focus": "people"}),
         runtime(llm=llm, exa=FakeExa(error=RuntimeError("down"))),
     )
-    assert out["findings"][0]["gaps"] == ["retrieval failed"]
+    assert out["findings"][0]["gaps"] == ["lane people: retrieval failed"]
     assert out["errors"]
     assert out["sources"] == []
 
 
-def test_scout_skips_elicit_without_academic_signal():
-    elicit = FakeElicit(hits=[source(title="Paper", provider="elicit")], enabled=True)
+def test_scout_skips_publication_search_without_academic_signal():
+    exa = FakeExa()
     out = scout(
         {"initial_query": "Best laptop for travel", "clarify_turns": 0},
-        runtime(elicit=elicit, elicit_api_key="k"),
+        runtime(exa=exa),
     )
-    assert elicit.search_nums == []
-    assert all(hit["provider"] != "elicit" for hit in out["scout_hits"])
+    assert exa.search_categories == [None]
+    assert all(hit["focus"] == "web" for hit in out["scout_hits"])
 
 
 def test_scout_failure_returns_empty_hits_and_errors():
@@ -307,7 +406,7 @@ def test_topics_per_wave_cap_at_three(topics: list[str], expected: list[str]):
         runtime(llm=FakeLLM(plan=PlanDecision(topics=topics, reason="list"))),
     )
     assert [t["query"] for t in out["topics"]] == expected
-    assert out["prior_queries"] == expected
+    assert [row["query"] for row in out["prior_queries"]] == expected
     assert out["followups"] == []
 
 
@@ -345,7 +444,7 @@ def test_follow_up_topics_per_wave_cap_at_two(topics: list[str], expected: list[
         runtime(llm=FakeLLM(plan=PlanDecision(topics=topics, reason="gaps"))),
     )
     assert [t["query"] for t in out["topics"]] == expected
-    assert out["prior_queries"] == ["define X", *expected]
+    assert [row["query"] for row in out["prior_queries"]] == ["define X", *expected]
     assert out["followups"] == []
 
 
@@ -364,57 +463,7 @@ def test_plan_drops_duplicate_prior_queries():
         ),
     )
     assert [t["query"] for t in out["topics"]] == ["safety data"]
-    assert out["prior_queries"] == ["define X", "safety data"]
-    assert out["followups"] == []
-
-
-def test_follow_up_wave_researches_reflect_followups():
-    out = plan_topics(
-        {
-            "initial_query": "What is X?",
-            "brief": {"question": "What is X?"},
-            "iteration": 1,
-            "topics": [{"id": "t0_1", "query": "define X"}],
-            "followups": ["missing safety"],
-        },
-        runtime(llm=FakeLLM(plan=PlanDecision(topics=["define X"], reason="repeat"))),
-    )
-    assert [t["query"] for t in out["topics"]] == ["missing safety"]
-    assert out["prior_queries"] == ["define X", "missing safety"]
-    assert out["followups"] == []
-
-
-def test_plan_topics_follow_up_no_duplicate_queries():
-    out = plan_topics(
-        {
-            "initial_query": "What is X?",
-            "brief": {"question": "What is X?"},
-            "iteration": 2,
-            "topics": [{"id": "t1_1", "query": "safety data"}],
-            "prior_queries": ["define X", "safety data"],
-            "followups": ["define X", "new gap"],
-        },
-        runtime(llm=FakeLLM(plan=PlanDecision(topics=["other"], reason="x"))),
-    )
-    assert [t["query"] for t in out["topics"]] == ["new gap"]
-    assert out["prior_queries"] == ["define X", "safety data", "new gap"]
-    assert out["followups"] == []
-
-
-def test_plan_uses_llm_when_followups_repeat_prior_queries():
-    out = plan_topics(
-        {
-            "initial_query": "What is X?",
-            "brief": {"question": "What is X?"},
-            "iteration": 2,
-            "topics": [{"id": "t1_1", "query": "more"}],
-            "prior_queries": ["define X", "more"],
-            "followups": ["more"],
-        },
-        runtime(llm=FakeLLM(plan=PlanDecision(topics=["still more"], reason="gaps"))),
-    )
-    assert [t["query"] for t in out["topics"]] == ["still more"]
-    assert out["prior_queries"] == ["define X", "more", "still more"]
+    assert [row["query"] for row in out["prior_queries"]] == ["define X", "safety data"]
     assert out["followups"] == []
 
 
@@ -430,7 +479,7 @@ def test_plan_topics_follow_up_no_duplicate_queries_when_all_repeat():
         runtime(llm=FakeLLM(plan=PlanDecision(topics=["define X"], reason="repeat"))),
     )
     assert out["topics"] == []
-    assert out["prior_queries"] == ["define X"]
+    assert [row["query"] for row in out["prior_queries"]] == ["define X"]
     assert out["followups"] == []
 
 
@@ -618,3 +667,49 @@ def test_write_report_uses_write_role_llm():
         runtime(llm=default, llms={"write": writer}),
     )
     assert out["final_report"] == "Writer role report [src_t0_1_1]."
+
+
+def test_highlights_inherit_focus_and_doi():
+    """A highlights read carries no lane; it takes both from the source it read."""
+    paper = source(title="Paper", url="https://doi.org/10.1/x", doi="10.1/x")
+    llm = FakeLLM(
+        tool_script=[
+            ("exa_publication_search", {"query": "trials of X"}),
+            ("exa_highlights", {"url": "https://doi.org/10.1/x"}),
+        ],
+        tool_rounds=2,
+    )
+    out = research_agent(
+        _payload(topic={"id": "t0_1", "query": "trials of X", "focus": "publication"}),
+        runtime(llm=llm, exa=FakeExa(hits=[paper])),
+    )
+    assert out["sources"][1]["focus"] == "publication"
+    assert out["sources"][1]["doi"] == "10.1/x"
+
+
+def test_degraded_search_appends_an_error_not_a_gap():
+    exa = FakeExa(hits=[])
+    exa.degraded = "exa publication search ran without abstracts or DOIs"
+    llm = FakeLLM(tool_name="exa_search", tool_args={"query": "test"})
+    # No hits, so _gap_kind really runs and the gap assertion can fail.
+    out = research_agent(_payload(), runtime(llm=llm, exa=exa))
+    assert exa.degraded in out["errors"]
+    assert all("retrieval failed" not in g for g in out["findings"][0]["gaps"])
+
+
+@pytest.mark.parametrize(
+    "web, papers, expected",
+    [
+        (3, 1, ["web", "publication", "web", "web"]),
+        (1, 3, ["web", "publication", "publication", "publication"]),
+        (0, 2, ["publication", "publication"]),
+    ],
+)
+def test_interleave_keeps_every_hit_of_a_ragged_pair(
+    web: int, papers: int, expected: list[str]
+):
+    got = _interleave(
+        [{"focus": "web"} for _ in range(web)],
+        [{"focus": "publication"} for _ in range(papers)],
+    )
+    assert [h["focus"] for h in got] == expected

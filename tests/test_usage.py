@@ -12,6 +12,7 @@ from exact.nodes.clarify import decide_clarify
 from exact.nodes.research import research_agent
 from exact.nodes.scout import scout
 from exact.nodes.write import write_report
+from exact.status import format_update
 from exact.usage import (
     EXA_HIGHLIGHTS_USD,
     EXA_SEARCH_USD,
@@ -21,7 +22,7 @@ from exact.usage import (
     invoke_structured,
     invoke_text,
 )
-from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, source
+from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime
 
 
 def test_format_usage_haiku_tokens_literal_usd():
@@ -166,11 +167,25 @@ def test_format_usage_people_and_company_price_as_exa_search():
     assert a["exa_cost"] == 3 * EXA_SEARCH_USD
 
 
+def test_publication_event_raises_exa_count_and_total():
+    events = [
+        {"kind": "exa_search", "node": "scout", "calls": 1},
+        {"kind": "exa_publication_search", "node": "scout", "calls": 1},
+    ]
+    a = aggregate(events)
+    assert a["exa_search"] == 2
+    assert a["exa_cost"] == 2 * EXA_SEARCH_USD
+    assert "exa     2 search" in format_usage(events)[2]
+    assert format_update("research_agent", {"usage": events})[0].endswith(
+        "1 exa_search · 1 exa_publication_search"
+    )
+
+
 def test_research_vertical_tool_events_match_successful_calls():
     llm = FakeLLM(tool_name="exa_people_search", tool_args={"query": "test"})
     out = research_agent(
         {
-            "topic": {"id": "t0_1", "query": "define X", "status": "pending"},
+            "topic": {"id": "t0_1", "query": "define X", "focus": "people"},
             "brief": {"question": "What is X?", "intent": "web", "must_cover": ["x"]},
             "prior_titles": [],
         },
@@ -262,15 +277,14 @@ def test_scout_emits_exa_usage_on_success():
     assert out["usage"] == [{"kind": "exa_search", "node": "scout", "calls": 1}]
 
 
-def test_scout_emits_elicit_on_academic_success():
-    elicit = FakeElicit(hits=[source(provider="elicit", title="Paper")], enabled=True)
+def test_scout_emits_a_publication_event_on_academic_success():
     out = scout(
         {"initial_query": "meta-analysis of X", "clarify_turns": 0},
-        runtime(elicit=elicit, elicit_api_key="k"),
+        runtime(exa=FakeExa()),
     )
     kinds = [e["kind"] for e in out["usage"]]
     assert "exa_search" in kinds
-    assert "elicit_search" in kinds
+    assert "exa_publication_search" in kinds
 
 
 def test_scout_failure_has_no_tool_event():
@@ -373,7 +387,7 @@ def test_format_references_lists_sources():
         ]
     )
     assert lines[0] == "## References"
-    assert lines[1] == "[src_t0_1_1] Source A — https://example.com/a (exa)"
+    assert lines[1] == "[src_t0_1_1] Source A — https://example.com/a (web)"
 
 
 def test_format_references_empty_when_no_sources():

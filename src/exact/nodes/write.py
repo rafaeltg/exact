@@ -6,18 +6,29 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import ExactState, JsonMapping
+from exact.models import ExactState, JsonMapping, focus_label
 from exact.usage import invoke_text
 
 
+def _location(source: JsonMapping, label: str) -> str:
+    """Where the source lives; a paper shows its DOI beside its URL."""
+    url = str(source.get("url") or "")
+    doi = str(source.get("doi") or "")
+    # A doi.org resolver url already spells the DOI; do not print it twice.
+    # A DOI is case-insensitive and publishers mix case, so fold both sides.
+    if label == "publication" and url and doi and doi.casefold() not in url.casefold():
+        return f"{url} — doi:{doi}"
+    return url or doi
+
+
 def _reference_line(source: JsonMapping) -> str:
-    loc = source.get("url") or source.get("doi") or ""
-    provider = source.get("provider") or ""
+    label = focus_label(source)
     title = source.get("title") or "untitled"
     sid = source.get("id") or "?"
+    loc = _location(source, label)
     extra = f" — {loc}" if loc else ""
-    prov = f" ({provider})" if provider else ""
-    return f"[{sid}] {title}{extra}{prov}"
+    tag = f" ({label})" if label else ""
+    return f"[{sid}] {title}{extra}{tag}"
 
 
 def format_references(sources: Sequence[JsonMapping] | None) -> list[str]:

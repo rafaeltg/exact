@@ -5,13 +5,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from exact import prompts
 from exact.config import Runtime, role_model_id
 from exact.intent import academic_signal
-from exact.models import ExactState, ResearchBrief
+from exact.models import ExactState, ResearchBrief, focus_label
 from exact.usage import StructuredOutputError, invoke_structured
 
 
 def _scout_text(hits: list[dict]) -> str:
     lines = [
-        f"- {h.get('title')} [{h.get('provider')}] {h.get('snippet', '')[:180]}"
+        f"- {h.get('title')} [{focus_label(h)}] {h.get('snippet', '')[:180]}"
         for h in hits[:8]
     ]
     return "\n".join(lines) or "(none)"

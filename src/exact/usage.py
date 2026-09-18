@@ -212,7 +212,18 @@ def llm_usd(
     ) / 1_000_000
 
 
-_EXA_SEARCH_KINDS = frozenset({"exa_search", "exa_people_search", "exa_company_search"})
+# Every Exa search kind. Confirmed 2026-09-17 against a live /search response:
+# a publication search bills the same $0.007 as a web search, so one rate and
+# one printed counter cover them all. Highlights and Elicit price apart.
+EXA_SEARCH_KINDS = frozenset(
+    {
+        "exa_search",
+        "exa_people_search",
+        "exa_company_search",
+        "exa_publication_search",
+    }
+)
+_METERED_TOOL_KINDS = EXA_SEARCH_KINDS | {"exa_highlights", "elicit_search"}
 
 
 def _empty_totals() -> dict:
@@ -254,7 +265,7 @@ def _fold_llm(totals: dict, ev: dict, calls: int) -> None:
 
 
 def _fold_tool(totals: dict, kind: str, calls: int) -> None:
-    if kind in _EXA_SEARCH_KINDS:
+    if kind in EXA_SEARCH_KINDS:
         totals["exa_search"] += calls
     elif kind == "exa_highlights":
         totals["exa_highlights"] += calls
@@ -318,12 +329,6 @@ def tool_counts(events: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for ev in events or []:
         kind = ev.get("kind")
-        if kind in (
-            "exa_search",
-            "exa_people_search",
-            "exa_company_search",
-            "exa_highlights",
-            "elicit_search",
-        ):
+        if kind in _METERED_TOOL_KINDS:
             counts[kind] = counts.get(kind, 0) + int(ev.get("calls") or 1)
     return counts

@@ -9,17 +9,22 @@ from exact.intent import academic_signal
 from exact.models import ClarificationOption, ClarifyDecision, ResearchBrief
 from exact.nodes.brief import generate_brief
 from exact.nodes.clarify import decide_clarify, parse_resume
+from exact.nodes.write import format_references
 from tests.fakes import FakeLLM, runtime
 
 
 @pytest.mark.parametrize(
     "query",
     [
-        "What does the study show?",
+        "What do the studies show?",
         "What do trials of GLP-1 show?",
         "Find the paper on X",
         "A meta-analysis of Y",
         "What is the doi for this?",
+        "what does the literature say about GLP-1",
+        "What is the evidence for X?",
+        "Which journal published it?",
+        "Find the arxiv preprint",
     ],
 )
 def test_academic_signal_is_true_for_spec_heuristics(query: str):
@@ -28,7 +33,13 @@ def test_academic_signal_is_true_for_spec_heuristics(query: str):
 
 @pytest.mark.parametrize(
     "query",
-    ["Best laptop for travel", "What is X?", "", None],
+    [
+        "Best laptop for travel",
+        "What is X?",
+        "case study of Tesla marketing",
+        "",
+        None,
+    ],
 )
 def test_academic_signal_is_false_without_heuristic(query: str | None):
     assert academic_signal(query) is False
@@ -490,3 +501,84 @@ def test_an_earlier_clarify_turn_still_promotes_the_brief_to_academic():
         runtime(llm=llm),
     )
     assert out["brief"]["intent"] == "academic"
+
+
+def test_reference_line_renders_doi_beside_url():
+    lines = format_references(
+        [
+            {
+                "id": "src_t0_1_1",
+                "title": "A trial",
+                "url": "https://www.nature.com/articles/x",
+                "doi": "10.1/x",
+                "provider": "exa",
+                "focus": "publication",
+            }
+        ]
+    )
+    assert lines[1] == (
+        "[src_t0_1_1] A trial — https://www.nature.com/articles/x — doi:10.1/x"
+        " (publication)"
+    )
+
+
+def test_reference_line_does_not_repeat_a_doi_the_url_already_spells():
+    lines = format_references(
+        [
+            {
+                "id": "src_t0_1_1",
+                "title": "A trial",
+                "url": "https://doi.org/10.1/x",
+                "doi": "10.1/x",
+                "provider": "exa",
+                "focus": "publication",
+            }
+        ]
+    )
+    assert lines[1] == "[src_t0_1_1] A trial — https://doi.org/10.1/x (publication)"
+
+
+_PAPER_HIT = {
+    "title": "A trial",
+    "provider": "exa",
+    "focus": "publication",
+    "snippet": "s",
+}
+
+
+def test_scout_text_labels_publication_hit():
+    """The paper signal must reach the brief prompt, not just the scout."""
+    llm = FakeLLM()
+    generate_brief(
+        {"initial_query": "What is X?", "scout_hits": [_PAPER_HIT]}, runtime(llm=llm)
+    )
+    prompt = llm.with_structured_output(ResearchBrief).last_messages[0].content
+    assert "[publication]" in prompt
+
+
+def test_scout_block_labels_publication_hit():
+    llm = FakeLLM()
+    decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "skip_clarify": False,
+            "clarify_turns": 0,
+            "scout_hits": [_PAPER_HIT],
+        },
+        runtime(llm=llm),
+    )
+    prompt = llm.with_structured_output(ClarifyDecision).last_messages[0].content
+    assert "[publication]" in prompt
+
+
+def test_scout_labels_fall_back_to_web_for_a_pre_focus_checkpoint():
+    llm = FakeLLM()
+    generate_brief(
+        {
+            "initial_query": "What is X?",
+            "scout_hits": [{"title": "A page", "provider": "exa", "snippet": "s"}],
+        },
+        runtime(llm=llm),
+    )
+    prompt = llm.with_structured_output(ResearchBrief).last_messages[0].content
+    assert "[web]" in prompt

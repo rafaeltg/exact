@@ -1,0 +1,3567 @@
+{
+  "costDollars": {
+    "search": {
+      "neural": 0.007
+    },
+    "total": 0.007
+  },
+  "requestId": "2189ed7451eb30e92a3af0b4fc3e770f",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "author": "Michael A. Nauck, Peter Lommer Kristensen, Lasse Steen Ravn, Richard M. Bergenstal, Stuart Pocock, Neil R Poulter, et al.",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/publication/mlwnbrj9zwn",
+          "properties": {
+            "abstract": "The cardiovascular effect of liraglutide, a glucagon-like peptide 1 analogue, when added to standard care in patients with type 2 diabetes, remains unknown.",
+            "authors": [
+              {
+                "id": null,
+                "name": "Michael A. Nauck"
+              },
+              {
+                "id": null,
+                "name": "Peter Lommer Kristensen"
+              },
+              {
+                "id": null,
+                "name": "Lasse Steen Ravn"
+              },
+              {
+                "id": null,
+                "name": "Richard M. Bergenstal"
+              },
+              {
+                "id": null,
+                "name": "Stuart Pocock"
+              },
+              {
+                "id": null,
+                "name": "Neil R Poulter"
+              },
+              {
+                "id": null,
+                "name": "Bernard Zinman"
+              },
+              {
+                "id": null,
+                "name": "William M. Steinberg"
+              },
+              {
+                "id": null,
+                "name": "Kirstine Brown Frandsen"
+              },
+              {
+                "id": null,
+                "name": "John B. Buse"
+              },
+              {
+                "id": null,
+                "name": "Johannes F.E. Mann"
+              },
+              {
+                "id": null,
+                "name": "Mette Stockner"
+              },
+              {
+                "id": null,
+                "name": "Steven P. Marso"
+              },
+              {
+                "id": null,
+                "name": "Gilbert H. Daniels"
+              },
+              {
+                "id": null,
+                "name": "Steven E. Nissen"
+              }
+            ],
+            "citationCount": 14,
+            "date": "2020-04-22",
+            "doi": "10.17615/5vsp-zn15",
+            "language": "en",
+            "referenceCount": null,
+            "title": "Liraglutide and Cardiovascular Outcomes in Type 2 Diabetes",
+            "type": "article",
+            "year": 2020
+          },
+          "type": "publication",
+          "version": 1
+        }
+      ],
+      "highlights": [
+        "BACKGROUND-The cardiovascular effect of liraglutide, a glucagon-like peptide 1 analogue, when added to standard care in patients with type 2 diabetes, remains unknown. METHODS-In this double-blind trial, we randomly assigned patients with type 2 diabetes and high cardiovascular risk to receive liraglutide or placebo. The primary composite outcome in the time-to-event analysis was the first occurrence of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke. The primary hypothesis was that liraglutide would be noninferior to placebo with regard to the primary outcome, with a margin of 1.30 for the upper boundary of the 95% confidence interval of the hazard ratio. No adjustments for multiplicity were performed for the prespecified exploratory outcomes. RESULTS-A total of 9340 patients underwent randomization. The median follow-up was 3.8 years. The primary outcome occurred in significantly fewer patients in the liraglutide group (608 of 4668 patients [13.0%]) than in the placebo group (694 of 4672 [14.9%]) (hazard ratio, 0.87; 95% confidence interval [CI], 0.78 to 0.97; P<0.001 for noninferiority; P=0.01 for superiority). Fewer patients died from cardiovascular causes in the liraglutide group (219 patients [4.7%]) than in the placebo group (278 [6.0%]) (hazard ratio, 0.78; 95% CI, 0.66 to 0.93; P=0.007). The rate of death from any cause was lower in the liraglutide group (381 patients [8.2%]) than in the placebo group (447 [9.6%]) (hazard ratio, 0.85; 95% CI, 0.74 to 0.97; P =0.02). The rates of nonfatal myocardial infarction, nonfatal stroke, and hospitalization for heart failure were nonsignificantly lower in the liraglutide group than in the placebo group. The most common adverse events leading to the discontinuation of liraglutide were gastrointestinal events. The incidence of pancreatitis was nonsignificantly lower in the liraglutide group than in the placebo group. CONCLUSIONS-In the time-to-event analysis, the rate of the first occurrence of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke among patients with type 2 diabetes mellitus was lower with liraglutide than with placebo.\n...\nType 2 diabetes is a complex metabolic disorder that is characterized by hyperglycemia and associated with a high risk of cardiovascular, microvascular, and other complications. 1, 2 lthough glycemic control is associated with reductions in the risk of microvascular complications, the macrovascular benefits of glycemic control are less certain. Furthermore, concern has been raised about the cardiovascular safety of antihyperglycemic therapies. 3 onsequently, regulatory authorities have mandated cardiovascular safety assessments of new diabetes treatments. 4, 5 raglutide, an analogue of human glucagon-like peptide 1 (GLP-1), 6 has been approved for the treatment of type 2 diabetes. Its efficacy in lowering glucose levels has been established, and it has been associated with slight reductions in weight and blood pressure. [6] [7] 7] [8] It has been associated with an increase in pulse rate. 7, 8 To assess the long-term effects of liraglutide on cardiovascular outcomes and other clinically important events, the Liraglutide Effect and Action in Diabetes: Evaluation of Cardiovascular Outcome Results (LEADER) trial was initiated in 2010. 9\n...\nWe performed this multicenter, double-blind, placebo-controlled trial at 410 sites in 32 countries. Detailed methods of the trial have been published previously, 9 and the trial protocol is available with the full text of this article at NEJM.org. The trial protocol was reviewed and approved by the institutional review board or ethics committee at each participating center. All the patients provided written informed consent before participation. Patients with type 2 diabetes who were at high risk for cardiovascular disease were randomly assigned, in a 1:1 ratio, to receive liraglutide or placebo. The minimum planned follow-up was 42 months, with a maximum of 60 months of receiving the assigned regimen and an additional 30 days of follow-up afterward.\n...\nPatients with type 2 diabetes who had a glycated hemoglobin level of 7.0% or more were eligible if they either had not received drugs for this condition previously or had been treated with one or more oral antihyperglycemic agents or insulin (human neutral protamine Hagedorn, long-acting analogue, or premixed) or a combination of these agents. The major inclusion criteria were the following: an age of 50 years or more with at least one cardiovascular coexisting condition (coronary heart disease, cerebrovascular disease, peripheral vascular disease, chronic kidney disease of stage 3 or greater, or chronic heart failure of New York Heart Association class II or III) or an age of 60 years or more with at least one cardiovascular risk factor, as determined by the investigator (microalbuminuria or proteinuria, hypertension and left ventricular hypertrophy, left ventricular systolic or diastolic dysfunction, or an ankle-brachial index [the ratio of the systolic blood pressure at the ankle to the systolic blood pressure in the arm] of less than 0.9). 9 Major exclusion criteria were type 1 diabetes; the use of GLP-1-receptor agonists, dipeptidyl peptidase 4 (DPP-4) inhibitors, pramlintide, or rapid-acting insulin; a familial or personal history of multiple endocrine neoplasia type 2 or medullary thyroid cancer; and the occurrence of an acute coronary or cerebrovascular event within 14 days before screening and randomization. The complete inclusion and exclusion criteria are listed in the Supplementary Appendix.\n...\nAfter a 2-week placebo run-in phase to establish whether patients were able to adhere to the injection regimen, patients were randomly assigned, in a 1:1 ratio, to receive either 1.8 mg (or the maximum tolerated dose) of liraglutide or matching placebo once daily as a subcutaneous injection in addition to standard care (Fig. S1 in the Supplementary Appendix). Randomization was stratified according to the estimated glomerular filtration rate (eGFR) at screening (<30 or \u226530 ml per minute per 1.73 m 2 of body-surface area), as calculated with the use of the Modification of Diet in Renal Disease equation. For patients who did not meet the recommended target for glycemic control (glycated hemoglobin level \u22647% or individualized target at the investigator's discretion) after randomization, the addition of any antihyperglycemic agents except for GLP-1-receptor agonists, DPP-4 inhibitors, or pramlintide was permitted. Patients were scheduled for follow-up visits at months 1, 3, and 6 and every 6 months thereafter.\n...\nand an eGFR of \u226445 ml per minute per 1.73 m 2 , the need for\n...\nThe primary composite outcome occurred in fewer patients in the liraglutide group (608 of 4668 patients [13.0%]) than in the placebo group (694 of 4672 [14.9%]) (hazard ratio, 0.87; 95% confidence interval [CI], 0.78 to 0.97; P<0.001 for noninferiority; P = 0.01 for superiority) (Table 1 and Fig. 1A ). Death from cardiovascular causes occurred in fewer patients in the liraglutide group (219 patients [4.7%]) than in the placebo group (278 [6.0%]) (hazard ratio, 0.78; 95% CI, 0.66 to 0.93; P = 0.007) (Fig. 1B ). The rate of death from any cause was also lower in the liraglutide group (381 patients [8.2%]) than in the placebo group (447 [9.6%]) (hazard ratio, 0.85; 95% CI, 0.74 to 0.97; P = 0.02). The frequencies of nonfatal myocardial infarction and nonfatal stroke were lower in the liraglutide group than in the placebo group, although the differences were not significant (Fig. 1C and 1D and Table 1 ). The magnitude of the differences was similar in sensitivity analyses with alternative censoring, including the per-protocol analysis (Fig. S3 in the Supplementary Appendix). Findings for the remaining adjudicated cardiovascular outcomes and the expanded composite outcome are provided in Table 1 , and Figure S4 in the Supplementary Appendix."
+      ],
+      "id": "https://exa.ai/library/publication/mlwnbrj9zwn",
+      "publishedDate": "2020-04-22T00:00:00.000Z",
+      "title": "Liraglutide and Cardiovascular Outcomes in Type 2 Diabetes",
+      "url": "https://doi.org/10.17615/5vsp-zn15"
+    },
+    {
+      "author": "Adrian F. Hernandez, Jennifer B. Green, Salim Janmohamed, Ralph B. D\u2019Agostino, Christopher B. Granger, Nigel C. Jones, et al.",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/publication/d5pk240v077",
+          "properties": {
+            "abstract": null,
+            "authors": [
+              {
+                "id": null,
+                "name": "Adrian F. Hernandez"
+              },
+              {
+                "id": null,
+                "name": "Jennifer B. Green"
+              },
+              {
+                "id": null,
+                "name": "Salim Janmohamed"
+              },
+              {
+                "id": null,
+                "name": "Ralph B. D\u2019Agostino"
+              },
+              {
+                "id": null,
+                "name": "Christopher B. Granger"
+              },
+              {
+                "id": null,
+                "name": "Nigel C. Jones"
+              },
+              {
+                "id": null,
+                "name": "Lawrence A. Leiter"
+              },
+              {
+                "id": null,
+                "name": "Anne E Rosenberg"
+              },
+              {
+                "id": null,
+                "name": "Kristina N. Sigmon"
+              },
+              {
+                "id": null,
+                "name": "Matthew C. Somerville"
+              },
+              {
+                "id": null,
+                "name": "Karl M. Thorpe"
+              },
+              {
+                "id": null,
+                "name": "John J.V. McMurray"
+              },
+              {
+                "id": null,
+                "name": "Stefano Del Prato"
+              },
+              {
+                "id": null,
+                "name": "Stefano Del Prato"
+              },
+              {
+                "id": null,
+                "name": "John J.V. McMurray"
+              },
+              {
+                "id": null,
+                "name": "Ralph B. D\u2019Agostino"
+              },
+              {
+                "id": null,
+                "name": "Christopher B. Granger"
+              },
+              {
+                "id": null,
+                "name": "Adrian F. Hernandez"
+              },
+              {
+                "id": null,
+                "name": "Salim Janmohamed"
+              },
+              {
+                "id": null,
+                "name": "Lawrence A. Leiter"
+              },
+              {
+                "id": null,
+                "name": "Robert M. Califf"
+              },
+              {
+                "id": null,
+                "name": "Rury R. Holman"
+              },
+              {
+                "id": null,
+                "name": "David L. DeMets"
+              },
+              {
+                "id": null,
+                "name": "Matthew C. Riddle"
+              },
+              {
+                "id": null,
+                "name": "Shaun G. Goodman"
+              },
+              {
+                "id": null,
+                "name": "Darren K. McGuire"
+              },
+              {
+                "id": null,
+                "name": "Karen Alexander"
+              },
+              {
+                "id": null,
+                "name": "Adam D. DeVore"
+              },
+              {
+                "id": null,
+                "name": "Chiara Melloni"
+              },
+              {
+                "id": null,
+                "name": "Chetan B. Patel"
+              },
+              {
+                "id": null,
+                "name": "David C. M. Kong"
+              },
+              {
+                "id": null,
+                "name": "Gerald S. Bloomfield"
+              },
+              {
+                "id": null,
+                "name": "Matthew T. Roe"
+              },
+              {
+                "id": null,
+                "name": "Pierluigi Tricoci"
+              },
+              {
+                "id": null,
+                "name": "Robert W. Harrison"
+              },
+              {
+                "id": null,
+                "name": "Renato D. L\u00f3pes"
+              },
+              {
+                "id": null,
+                "name": "Robin Mathews"
+              },
+              {
+                "id": null,
+                "name": "Rajendra Mehta"
+              },
+              {
+                "id": null,
+                "name": "W. Schuyler Jones"
+              },
+              {
+                "id": null,
+                "name": "Sreekanth Vemulapalli"
+              },
+              {
+                "id": null,
+                "name": "Thomas J. Povsic"
+              },
+              {
+                "id": null,
+                "name": "Zubin J. Eapen"
+              },
+              {
+                "id": null,
+                "name": "Keith Dombrowski"
+              },
+              {
+                "id": null,
+                "name": "Brad J. Kolls"
+              },
+              {
+                "id": null,
+                "name": "J. Dedrick Jordan"
+              },
+              {
+                "id": null,
+                "name": "Andrew P. Ambrosy"
+              },
+              {
+                "id": null,
+                "name": "Stephen J. Greene"
+              },
+              {
+                "id": null,
+                "name": "Aditya Mandawat"
+              },
+              {
+                "id": null,
+                "name": "Jay Shavadia"
+              },
+              {
+                "id": null,
+                "name": "Lauren B. Cooper"
+              },
+              {
+                "id": null,
+                "name": "Abhinav Sharma"
+              },
+              {
+                "id": null,
+                "name": "Patr\u00edcia O. Guimar\u00e3es"
+              },
+              {
+                "id": null,
+                "name": "Daniel J. Friedman"
+              },
+              {
+                "id": null,
+                "name": "Matthew E. Wilson"
+              },
+              {
+                "id": null,
+                "name": "Patricia Endsley"
+              },
+              {
+                "id": null,
+                "name": "Tracy Gentry"
+              },
+              {
+                "id": null,
+                "name": "Jeannie Collier"
+              },
+              {
+                "id": null,
+                "name": "Kathleen Perez"
+              },
+              {
+                "id": null,
+                "name": "K.E. James"
+              },
+              {
+                "id": null,
+                "name": "Jennifer Roush"
+              },
+              {
+                "id": null,
+                "name": "C. ARDEN III POPE"
+              },
+              {
+                "id": null,
+                "name": "Christina Howell"
+              },
+              {
+                "id": null,
+                "name": "Megan Johnson"
+              },
+              {
+                "id": null,
+                "name": "M. Bailey"
+              },
+              {
+                "id": null,
+                "name": "Joanna Cole"
+              },
+              {
+                "id": null,
+                "name": "Teresa Akers"
+              },
+              {
+                "id": null,
+                "name": "Beth Vandyne"
+              },
+              {
+                "id": null,
+                "name": "Betsy Thomas"
+              },
+              {
+                "id": null,
+                "name": "Jenny Rich"
+              },
+              {
+                "id": null,
+                "name": "Susan Bartone"
+              },
+              {
+                "id": null,
+                "name": "Gail Beaulieu"
+              },
+              {
+                "id": null,
+                "name": "Kim Brown"
+              },
+              {
+                "id": null,
+                "name": "Tuan Chau"
+              },
+              {
+                "id": null,
+                "name": "Tamra Christian"
+              },
+              {
+                "id": null,
+                "name": "Rebecca Coker"
+              },
+              {
+                "id": null,
+                "name": "Deb Greene"
+              },
+              {
+                "id": null,
+                "name": "Trevorlyn Haddock"
+              },
+              {
+                "id": null,
+                "name": "Wendy Jenkins"
+              },
+              {
+                "id": null,
+                "name": "Ghazala Haque"
+              },
+              {
+                "id": null,
+                "name": "Marsha L. Marquess"
+              },
+              {
+                "id": null,
+                "name": "Jean Pesarchick"
+              },
+              {
+                "id": null,
+                "name": "Renee Rethaford"
+              },
+              {
+                "id": null,
+                "name": "Allegra Stone"
+              },
+              {
+                "id": null,
+                "name": "Firas Al- Kawas"
+              },
+              {
+                "id": null,
+                "name": "Michelle A. Anderson"
+              },
+              {
+                "id": null,
+                "name": "Robert Enns"
+              },
+              {
+                "id": null,
+                "name": "Isaac Sinay"
+              },
+              {
+                "id": null,
+                "name": "Chantal Mathieu"
+              },
+              {
+                "id": null,
+                "name": "Victor Yordanov"
+              },
+              {
+                "id": null,
+                "name": "Irene Hramiak"
+              },
+              {
+                "id": null,
+                "name": "Martin Haluz\u0131\u0301k"
+              },
+              {
+                "id": null,
+                "name": "S\u00f8ren Galatius"
+              },
+              {
+                "id": null,
+                "name": "Bruno Guerci"
+              },
+              {
+                "id": null,
+                "name": "Michael A. Nauck"
+              },
+              {
+                "id": null,
+                "name": "Ilias Migdalis"
+              },
+              {
+                "id": null,
+                "name": "Choon Beng Kathryn Tan"
+              },
+              {
+                "id": null,
+                "name": "Gy\u0151z\u0151 Kocsis"
+              },
+              {
+                "id": null,
+                "name": "Andrea Giaccari"
+              },
+              {
+                "id": null,
+                "name": "Moon Kyu Lee"
+              },
+              {
+                "id": null,
+                "name": "Ernesto Mu\u00f1oz"
+              },
+              {
+                "id": null,
+                "name": "Jan H. Cornel"
+              },
+              {
+                "id": null,
+                "name": "K\u00e5re I. Birkeland"
+              },
+              {
+                "id": null,
+                "name": "Miguel E. Pinto"
+              },
+              {
+                "id": null,
+                "name": "Louie Tirador"
+              },
+              {
+                "id": null,
+                "name": "Martyna Olesi\u0144ska\u2010Mader"
+              },
+              {
+                "id": null,
+                "name": "\u041c. \u0412. \u0428\u0435\u0441\u0442\u0430\u043a\u043e\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "Larry A. Distiller"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 L\u00f3pez\u2010Send\u00f3n"
+              },
+              {
+                "id": null,
+                "name": "Bj\u00f6rn Eliasson"
+              },
+              {
+                "id": null,
+                "name": "Chern\u2010En Chiang"
+              },
+              {
+                "id": null,
+                "name": "Suphot Srimahachota"
+              },
+              {
+                "id": null,
+                "name": "Boris Mankovsky"
+              },
+              {
+                "id": null,
+                "name": "M. Angelyn Bethel"
+              },
+              {
+                "id": null,
+                "name": "Kathleen Dungan"
+              },
+              {
+                "id": null,
+                "name": "Mikhail Kosiborod"
+              },
+              {
+                "id": null,
+                "name": "Andres Alvarisqueta"
+              },
+              {
+                "id": null,
+                "name": "Jorge Baldovino"
+              },
+              {
+                "id": null,
+                "name": "Diego Besada"
+              },
+              {
+                "id": null,
+                "name": "Pedro Calella"
+              },
+              {
+                "id": null,
+                "name": "Maria Cecilia Cantero"
+              },
+              {
+                "id": null,
+                "name": "Patricia Casta\u00f1o"
+              },
+              {
+                "id": null,
+                "name": "Alejandro Chertkoff"
+              },
+              {
+                "id": null,
+                "name": "Jesus Cuadrado"
+              },
+              {
+                "id": null,
+                "name": "Luis De Loredo"
+              },
+              {
+                "id": null,
+                "name": "Andrea Dom\u00ednguez"
+              },
+              {
+                "id": null,
+                "name": "Maria Vanesa Espa\u00f1ol"
+              },
+              {
+                "id": null,
+                "name": "Hernan Finkelstein"
+              },
+              {
+                "id": null,
+                "name": "Gustavo Frechtel"
+              },
+              {
+                "id": null,
+                "name": "Jose Osvaldo Fretes"
+              },
+              {
+                "id": null,
+                "name": "Natalia Garrido Santos"
+              },
+              {
+                "id": null,
+                "name": "Joaquin Pablo Gonzalez"
+              },
+              {
+                "id": null,
+                "name": "Marcos Litvak"
+              },
+              {
+                "id": null,
+                "name": "Juan Loureyro"
+              },
+              {
+                "id": null,
+                "name": "Laura Maffei"
+              },
+              {
+                "id": null,
+                "name": "Natacha Maldonado"
+              },
+              {
+                "id": null,
+                "name": "Diego Mohr Gasparini"
+              },
+              {
+                "id": null,
+                "name": "Silvia Ines Orio"
+              },
+              {
+                "id": null,
+                "name": "Federico P\u00e9rez Manghi"
+              },
+              {
+                "id": null,
+                "name": "Nelson Papini"
+              },
+              {
+                "id": null,
+                "name": "Jorgelina Sala"
+              },
+              {
+                "id": null,
+                "name": "Pablo Schygiel"
+              },
+              {
+                "id": null,
+                "name": "Georgina Sposetti"
+              },
+              {
+                "id": null,
+                "name": "Mar\u00eda Rosa Ulla"
+              },
+              {
+                "id": null,
+                "name": "Fernando Verra"
+              },
+              {
+                "id": null,
+                "name": "Silvina Zabalua"
+              },
+              {
+                "id": null,
+                "name": "Cesar Javier Zaidman"
+              },
+              {
+                "id": null,
+                "name": "Laurent Crenier"
+              },
+              {
+                "id": null,
+                "name": "Corinne Debroye"
+              },
+              {
+                "id": null,
+                "name": "Francis Duyck"
+              },
+              {
+                "id": null,
+                "name": "Andr\u00e9 Scheen"
+              },
+              {
+                "id": null,
+                "name": "Luc Van Gaal"
+              },
+              {
+                "id": null,
+                "name": "Chris Vercammen"
+              },
+              {
+                "id": null,
+                "name": "V. Damyanova"
+              },
+              {
+                "id": null,
+                "name": "Stefan Dimitrov"
+              },
+              {
+                "id": null,
+                "name": "Snezhina Kovacheva"
+              },
+              {
+                "id": null,
+                "name": "L Lozanov"
+              },
+              {
+                "id": null,
+                "name": "Viktor Margaritov"
+              },
+              {
+                "id": null,
+                "name": "Rositsa Mihaylova-Shumkova"
+              },
+              {
+                "id": null,
+                "name": "\u0410. \u0413. \u041d\u0438\u043a\u043e\u043b\u0430\u0435\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "Zhasmina Stoyanova"
+              },
+              {
+                "id": null,
+                "name": "Ronald Akhras"
+              },
+              {
+                "id": null,
+                "name": "Yves Beaudry"
+              },
+              {
+                "id": null,
+                "name": "Jacques B\u00e9dard"
+              },
+              {
+                "id": null,
+                "name": "Joseph Berlingieri"
+              },
+              {
+                "id": null,
+                "name": "R Chehayeb"
+              },
+              {
+                "id": null,
+                "name": "Stephen Cheung"
+              },
+              {
+                "id": null,
+                "name": "James Conway"
+              },
+              {
+                "id": null,
+                "name": "Jean R. Cusson"
+              },
+              {
+                "id": null,
+                "name": "Anthony Della Siega"
+              },
+              {
+                "id": null,
+                "name": "R Dumas"
+              },
+              {
+                "id": null,
+                "name": "Peter Dzongowski"
+              },
+              {
+                "id": null,
+                "name": "Murdo Ferguson"
+              },
+              {
+                "id": null,
+                "name": "Daniel Gaudet"
+              },
+              {
+                "id": null,
+                "name": "Fran\u00e7ois Grondin"
+              },
+              {
+                "id": null,
+                "name": "Anil Kumar Gupta"
+              },
+              {
+                "id": null,
+                "name": "Milan Gupta"
+              },
+              {
+                "id": null,
+                "name": "Frank Halperin"
+              },
+              {
+                "id": null,
+                "name": "Pierre-Alain Houle"
+              },
+              {
+                "id": null,
+                "name": "Michael A. Jones"
+              },
+              {
+                "id": null,
+                "name": "Simon Kouz"
+              },
+              {
+                "id": null,
+                "name": "Christopher S. Kov\u00e1cs"
+              },
+              {
+                "id": null,
+                "name": "Daniel Landry"
+              },
+              {
+                "id": null,
+                "name": "Eva Lonn"
+              },
+              {
+                "id": null,
+                "name": "William O\u2019Mahony"
+              },
+              {
+                "id": null,
+                "name": "Sean Peterson"
+              },
+              {
+                "id": null,
+                "name": "Dennis Reich"
+              },
+              {
+                "id": null,
+                "name": "Alan J. Rosenbloom"
+              },
+              {
+                "id": null,
+                "name": "Fran\u00e7ois St-Maurice"
+              },
+              {
+                "id": null,
+                "name": "Barna Tugwell"
+              },
+              {
+                "id": null,
+                "name": "Saul Vizel"
+              },
+              {
+                "id": null,
+                "name": "Vincent Woo"
+              },
+              {
+                "id": null,
+                "name": "Tom\u00e1\u0161 Brychta"
+              },
+              {
+                "id": null,
+                "name": "Vladimir Cech"
+              },
+              {
+                "id": null,
+                "name": "Eva Dvo\u0159\u00e1kov\u00e1"
+              },
+              {
+                "id": null,
+                "name": "Tom\u00e1\u0161 Edelsberger"
+              },
+              {
+                "id": null,
+                "name": "Katarina Hal\u010diakov\u00e1"
+              },
+              {
+                "id": null,
+                "name": "Jarmila K\u0159\u00ed\u017eov\u00e1"
+              },
+              {
+                "id": null,
+                "name": "Ji\u0159\u00ed La\u0161t\u016fvka"
+              },
+              {
+                "id": null,
+                "name": "Martin Piperek"
+              },
+              {
+                "id": null,
+                "name": "V\u011bra Pr\u00fdmkov\u00e1"
+              },
+              {
+                "id": null,
+                "name": "Lea Raclavska"
+              },
+              {
+                "id": null,
+                "name": "Elena \u0160ilhov\u00e1"
+              },
+              {
+                "id": null,
+                "name": "Robin Urb\u00e1nek"
+              },
+              {
+                "id": null,
+                "name": "Jan Vrko\u010d"
+              },
+              {
+                "id": null,
+                "name": "Ulla Overgaard Andersen"
+              },
+              {
+                "id": null,
+                "name": "Jens Br\u00f8nnum-Schou"
+              },
+              {
+                "id": null,
+                "name": "Jens Dahlgaard Hove"
+              },
+              {
+                "id": null,
+                "name": "Jan Skov Jensen"
+              },
+              {
+                "id": null,
+                "name": "Lars K\u00f8ber"
+              },
+              {
+                "id": null,
+                "name": "Ole Peter Kristiansen"
+              },
+              {
+                "id": null,
+                "name": "Per Lund"
+              },
+              {
+                "id": null,
+                "name": "Thomas Melchior"
+              },
+              {
+                "id": null,
+                "name": "Ole Nyvad"
+              },
+              {
+                "id": null,
+                "name": "Morten Schou"
+              },
+              {
+                "id": null,
+                "name": "Alain Boye"
+              },
+              {
+                "id": null,
+                "name": "Didier Cadinot"
+              },
+              {
+                "id": null,
+                "name": "D. Gouet"
+              },
+              {
+                "id": null,
+                "name": "Patrick Henry"
+              },
+              {
+                "id": null,
+                "name": "Laurence Kessler"
+              },
+              {
+                "id": null,
+                "name": "Jean\u2010Daniel Lalau"
+              },
+              {
+                "id": null,
+                "name": "Catherine Petit"
+              },
+              {
+                "id": null,
+                "name": "Jean-Francois Thuan"
+              },
+              {
+                "id": null,
+                "name": "Christel Voinot"
+              },
+              {
+                "id": null,
+                "name": "Julien Vouillarmet"
+              },
+              {
+                "id": null,
+                "name": "Christoph Axthelm"
+              },
+              {
+                "id": null,
+                "name": "Dirk Berger"
+              },
+              {
+                "id": null,
+                "name": "Tasso Bieler"
+              },
+              {
+                "id": null,
+                "name": "Andreas L. Birkenfeld"
+              },
+              {
+                "id": null,
+                "name": "Jochen Bott"
+              },
+              {
+                "id": null,
+                "name": "Klaus Busch"
+              },
+              {
+                "id": null,
+                "name": "Karel Caca"
+              },
+              {
+                "id": null,
+                "name": "Julia Chevts"
+              },
+              {
+                "id": null,
+                "name": "Torsten Donaubauer"
+              },
+              {
+                "id": null,
+                "name": "Rudolf Erlinger"
+              },
+              {
+                "id": null,
+                "name": "Klaus Funke"
+              },
+              {
+                "id": null,
+                "name": "Josef Gro\u00dfkopf"
+              },
+              {
+                "id": null,
+                "name": "Andreas Hagenow"
+              },
+              {
+                "id": null,
+                "name": "M\u00f3nika In\u00e9s Hamann"
+              },
+              {
+                "id": null,
+                "name": "Manfred Hartard"
+              },
+              {
+                "id": null,
+                "name": "Peter Heymer"
+              },
+              {
+                "id": null,
+                "name": "W Huppertz"
+              },
+              {
+                "id": null,
+                "name": "Gabriele Illies"
+              },
+              {
+                "id": null,
+                "name": "Stephan Jacob"
+              },
+              {
+                "id": null,
+                "name": "Thomas S. Jung"
+              },
+              {
+                "id": null,
+                "name": "Gerd Kahrmann"
+              },
+              {
+                "id": null,
+                "name": "Petra Kast"
+              },
+              {
+                "id": null,
+                "name": "Monika Kellerer"
+              },
+              {
+                "id": null,
+                "name": "Hans\u2010Peter Kempe"
+              },
+              {
+                "id": null,
+                "name": "Andrei Khariouzov"
+              },
+              {
+                "id": null,
+                "name": "Gerhard Klausmann"
+              },
+              {
+                "id": null,
+                "name": "Christiane Klein"
+              },
+              {
+                "id": null,
+                "name": "Uwe Kleinecke-Pohl"
+              },
+              {
+                "id": null,
+                "name": "Klaus Kleinertz"
+              },
+              {
+                "id": null,
+                "name": "Thorsten Koch"
+              },
+              {
+                "id": null,
+                "name": "Christine Kosch"
+              },
+              {
+                "id": null,
+                "name": "Babette Lorra"
+              },
+              {
+                "id": null,
+                "name": "Joerg Luedemann"
+              },
+              {
+                "id": null,
+                "name": "Matthias Luttermann"
+              },
+              {
+                "id": null,
+                "name": "Stephan Maxeiner"
+              },
+              {
+                "id": null,
+                "name": "K Milek"
+              },
+              {
+                "id": null,
+                "name": "Andrea Moelle"
+              },
+              {
+                "id": null,
+                "name": "Gerhard Neumann"
+              },
+              {
+                "id": null,
+                "name": "Ruth Nischik"
+              },
+              {
+                "id": null,
+                "name": "Edith Oehrig-Pohl"
+              },
+              {
+                "id": null,
+                "name": "Georg Plassmann"
+              },
+              {
+                "id": null,
+                "name": "Lars Pohlmeier"
+              },
+              {
+                "id": null,
+                "name": "Felix Proepper"
+              },
+              {
+                "id": null,
+                "name": "Stefan Regner"
+              },
+              {
+                "id": null,
+                "name": "Werner Rieker"
+              },
+              {
+                "id": null,
+                "name": "Ludger Rose"
+              },
+              {
+                "id": null,
+                "name": "Holger Samer"
+              },
+              {
+                "id": null,
+                "name": "Joachim Sauter"
+              },
+              {
+                "id": null,
+                "name": "Frank Sch\u00e4per"
+              },
+              {
+                "id": null,
+                "name": "Clemens Schiffer"
+              },
+              {
+                "id": null,
+                "name": "Juergen Schmidt"
+              },
+              {
+                "id": null,
+                "name": "B. Scholz"
+              },
+              {
+                "id": null,
+                "name": "J Schulze"
+              },
+              {
+                "id": null,
+                "name": "Alexander Segner"
+              },
+              {
+                "id": null,
+                "name": "Jochen Seufert"
+              },
+              {
+                "id": null,
+                "name": "Helena Sigal"
+              },
+              {
+                "id": null,
+                "name": "Joerg Steindorf"
+              },
+              {
+                "id": null,
+                "name": "Juergen Stockhausen"
+              },
+              {
+                "id": null,
+                "name": "Petra Stuebler"
+              },
+              {
+                "id": null,
+                "name": "H Taeschner"
+              },
+              {
+                "id": null,
+                "name": "Dietrich Tews"
+              },
+              {
+                "id": null,
+                "name": "Diethelm Tschoepe"
+              },
+              {
+                "id": null,
+                "name": "Karl Wilhelm"
+              },
+              {
+                "id": null,
+                "name": "Helga Zeller-Stefan"
+              },
+              {
+                "id": null,
+                "name": "Iakovos Avramidis"
+              },
+              {
+                "id": null,
+                "name": "Stavros Bousboulas"
+              },
+              {
+                "id": null,
+                "name": "Magdalini Bristianou"
+              },
+              {
+                "id": null,
+                "name": "Georgios Dimitriadis"
+              },
+              {
+                "id": null,
+                "name": "Moses Elisaf"
+              },
+              {
+                "id": null,
+                "name": "Kalliopi Kotsa"
+              },
+              {
+                "id": null,
+                "name": "\u0391ndreas \u039celidonis"
+              },
+              {
+                "id": null,
+                "name": "Asimina Mitrakou"
+              },
+              {
+                "id": null,
+                "name": "Emmanouil Pagkalos"
+              },
+              {
+                "id": null,
+                "name": "\u039d\u03b9\u03ba\u03cc\u03bb\u03b1\u03bf\u03c2 \u03a0\u03b1\u03c0\u03ac\u03bd\u03b1\u03c2"
+              },
+              {
+                "id": null,
+                "name": "Angelos Pappas"
+              },
+              {
+                "id": null,
+                "name": "Christos Sampanis"
+              },
+              {
+                "id": null,
+                "name": "Nikola\u03bfs Tentolouris"
+              },
+              {
+                "id": null,
+                "name": "\u0391\u03c0\u03cc\u03c3\u03c4\u03bf\u03bb\u03bf\u03c2 \u03a4\u03c3\u03ac\u03c0\u03b1\u03c2"
+              },
+              {
+                "id": null,
+                "name": "Glykeria Tzatzagou"
+              },
+              {
+                "id": null,
+                "name": "Risa Ozaki"
+              },
+              {
+                "id": null,
+                "name": "Csaba Hajd\u00fa"
+              },
+              {
+                "id": null,
+                "name": "Eleon\u00f3ra Harcsa"
+              },
+              {
+                "id": null,
+                "name": "L. K\u00f6nyves"
+              },
+              {
+                "id": null,
+                "name": "J\u00e1nos Mucsi"
+              },
+              {
+                "id": null,
+                "name": "Zsolt Pauker"
+              },
+              {
+                "id": null,
+                "name": "Gizella Petr\u00f3"
+              },
+              {
+                "id": null,
+                "name": "Zsolt Pl\u00e9s"
+              },
+              {
+                "id": null,
+                "name": "Katalin R\u00e9v\u00e9sz"
+              },
+              {
+                "id": null,
+                "name": "V. Sandor"
+              },
+              {
+                "id": null,
+                "name": "Viktor Vass"
+              },
+              {
+                "id": null,
+                "name": "Angelo Avogaro"
+              },
+              {
+                "id": null,
+                "name": "Massimo Boemi"
+              },
+              {
+                "id": null,
+                "name": "Riccardo C. Bonadonna"
+              },
+              {
+                "id": null,
+                "name": "Agostino Consoli"
+              },
+              {
+                "id": null,
+                "name": "Salvatore De Cosmo"
+              },
+              {
+                "id": null,
+                "name": "Paolo Di Bartolo"
+              },
+              {
+                "id": null,
+                "name": "Francesco Dotta"
+              },
+              {
+                "id": null,
+                "name": "Simona Frontoni"
+              },
+              {
+                "id": null,
+                "name": "Marianna Galetta"
+              },
+              {
+                "id": null,
+                "name": "Alessandra Gambineri"
+              },
+              {
+                "id": null,
+                "name": "Carmine Gazzaruso"
+              },
+              {
+                "id": null,
+                "name": "Francesco Giorgino"
+              },
+              {
+                "id": null,
+                "name": "Davide Lauro"
+              },
+              {
+                "id": null,
+                "name": "Emanuela Orsi"
+              },
+              {
+                "id": null,
+                "name": "Giuseppe Paolisso"
+              },
+              {
+                "id": null,
+                "name": "G. Perriello"
+              },
+              {
+                "id": null,
+                "name": "PierMarco Piatti"
+              },
+              {
+                "id": null,
+                "name": "Antonio E. Pontiroli"
+              },
+              {
+                "id": null,
+                "name": "Paola Ponzani"
+              },
+              {
+                "id": null,
+                "name": "Angela A. Rivellese"
+              },
+              {
+                "id": null,
+                "name": "Giorgio Sesti"
+              },
+              {
+                "id": null,
+                "name": "Giancarlo Tonolo"
+              },
+              {
+                "id": null,
+                "name": "Roberto Trevisan"
+              },
+              {
+                "id": null,
+                "name": "Chul Woo Ahn"
+              },
+              {
+                "id": null,
+                "name": "Sei-Hyun Baik"
+              },
+              {
+                "id": null,
+                "name": "Bong-Soo Cha"
+              },
+              {
+                "id": null,
+                "name": "Choon Hee Chung"
+              },
+              {
+                "id": null,
+                "name": "Hak Chul Jang"
+              },
+              {
+                "id": null,
+                "name": "Chong-Jin Kim"
+              },
+              {
+                "id": null,
+                "name": "Hye Soon Kim"
+              },
+              {
+                "id": null,
+                "name": "In Joo Kim"
+              },
+              {
+                "id": null,
+                "name": "Eun Young Lee"
+              },
+              {
+                "id": null,
+                "name": "Hyoung Woo Lee"
+              },
+              {
+                "id": null,
+                "name": "Kwan Woo Lee"
+              },
+              {
+                "id": null,
+                "name": "Keon\u2010Woong Moon"
+              },
+              {
+                "id": null,
+                "name": "June Namgung"
+              },
+              {
+                "id": null,
+                "name": "Kyong Soo Park"
+              },
+              {
+                "id": null,
+                "name": "Soon Jib Yoo"
+              },
+              {
+                "id": null,
+                "name": "Jaemyung Yu"
+              },
+              {
+                "id": null,
+                "name": "Edmundo-Alfredo Bayram Llamas"
+              },
+              {
+                "id": null,
+                "name": "Jose-Luis Cervantes-Esc\u00e1rcega"
+              },
+              {
+                "id": null,
+                "name": "Luis Fernando Flota-Cervera"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 Gerardo Gonz\u00e1lez\u2010Gonz\u00e1lez"
+              },
+              {
+                "id": null,
+                "name": "Sara Pascoe-Gonz\u00e1lez"
+              },
+              {
+                "id": null,
+                "name": "Emilia Susana Pelayo-Orozco"
+              },
+              {
+                "id": null,
+                "name": "Santiago-Paulino Ramirez-Diaz"
+              },
+              {
+                "id": null,
+                "name": "Arturo Salda\u00f1a-Mendoza"
+              },
+              {
+                "id": null,
+                "name": "Carlos S\u00e1nchez Jerjes-D\u00edaz"
+              },
+              {
+                "id": null,
+                "name": "Jose Juan Torres-Colores"
+              },
+              {
+                "id": null,
+                "name": "Maricela Vidrio-Vel\u00e1zquez"
+              },
+              {
+                "id": null,
+                "name": "Juan Villagordoa-Mesa"
+              },
+              {
+                "id": null,
+                "name": "Hugo Peter Beijerbacht"
+              },
+              {
+                "id": null,
+                "name": "Reginald G.E.J. Groutars"
+              },
+              {
+                "id": null,
+                "name": "Boudewijn A Hoek"
+              },
+              {
+                "id": null,
+                "name": "Pieter Hoogslag"
+              },
+              {
+                "id": null,
+                "name": "Adriaan Kooy"
+              },
+              {
+                "id": null,
+                "name": "Johannes A. Kragten"
+              },
+              {
+                "id": null,
+                "name": "Aloysius G. Lieverse"
+              },
+              {
+                "id": null,
+                "name": "H. Swart"
+              },
+              {
+                "id": null,
+                "name": "Eric P. Viergever"
+              },
+              {
+                "id": null,
+                "name": "J Ahlqvist"
+              },
+              {
+                "id": null,
+                "name": "John Cooper"
+              },
+              {
+                "id": null,
+                "name": "Hanne L\u00f8vdal Gulseth"
+              },
+              {
+                "id": null,
+                "name": "Gaute Guttormsen"
+              },
+              {
+                "id": null,
+                "name": "Cecilie Wium"
+              },
+              {
+                "id": null,
+                "name": "Hugo Arba\u00f1il"
+              },
+              {
+                "id": null,
+                "name": "Jorge Calder\u00f3n\u2010Parra"
+              },
+              {
+                "id": null,
+                "name": "Luis H. Camacho"
+              },
+              {
+                "id": null,
+                "name": "Augusto Dextre Espinoza"
+              },
+              {
+                "id": null,
+                "name": "Elizabeth Garrido"
+              },
+              {
+                "id": null,
+                "name": "Alejandro Luna"
+              },
+              {
+                "id": null,
+                "name": "H\u00e9lard Manrique"
+              },
+              {
+                "id": null,
+                "name": "Frederick Massucco Revoredo"
+              },
+              {
+                "id": null,
+                "name": "Rolando Vargas Gonzales"
+              },
+              {
+                "id": null,
+                "name": "Luis Zapata Rincon"
+              },
+              {
+                "id": null,
+                "name": "Carlos Zubiate"
+              },
+              {
+                "id": null,
+                "name": "Geraldine Ebo"
+              },
+              {
+                "id": null,
+                "name": "Ellen Morales-Palomares"
+              },
+              {
+                "id": null,
+                "name": "Ma\u0142gorzata Arciszewska"
+              },
+              {
+                "id": null,
+                "name": "Marek Banach"
+              },
+              {
+                "id": null,
+                "name": "Renata Bijata-Bronisz"
+              },
+              {
+                "id": null,
+                "name": "Tadeusz Derezi\u0144ski"
+              },
+              {
+                "id": null,
+                "name": "Waldemar Gadzinski"
+              },
+              {
+                "id": null,
+                "name": "Jacek Gajek"
+              },
+              {
+                "id": null,
+                "name": "Katarzyna Klodawska"
+              },
+              {
+                "id": null,
+                "name": "Ewa Krzy\u017cag\u00f3rska"
+              },
+              {
+                "id": null,
+                "name": "Andrzej Madej"
+              },
+              {
+                "id": null,
+                "name": "Pawe\u0142 Mi\u0119kus"
+              },
+              {
+                "id": null,
+                "name": "Jaroslaw Opiela"
+              },
+              {
+                "id": null,
+                "name": "Piotr Romanczuk"
+              },
+              {
+                "id": null,
+                "name": "Anna Siegel"
+              },
+              {
+                "id": null,
+                "name": "Ewa Skokowska"
+              },
+              {
+                "id": null,
+                "name": "Andrzej Stankiewicz"
+              },
+              {
+                "id": null,
+                "name": "Teresa Stasinska"
+              },
+              {
+                "id": null,
+                "name": "Iwona Trznadel-Morawska"
+              },
+              {
+                "id": null,
+                "name": "Robert Witek"
+              },
+              {
+                "id": null,
+                "name": "Sergey B. Aksentyev"
+              },
+              {
+                "id": null,
+                "name": "\u0418\u0440\u0438\u043d\u0430 \u0410\u0440\u043a\u0430\u0434\u044c\u0435\u0432\u043d\u0430 \u0411\u043e\u043d\u0434\u0430\u0440\u044c"
+              },
+              {
+                "id": null,
+                "name": "Irina Demidova"
+              },
+              {
+                "id": null,
+                "name": "Alexander Dreval"
+              },
+              {
+                "id": null,
+                "name": "\u041e. \u0411. \u0415\u0440\u0448\u043e\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "G. R. Galstyan"
+              },
+              {
+                "id": null,
+                "name": "\u0410. \u0410. \u0413\u0430\u0440\u0433\u0430\u043d\u0435\u0435\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "\u041d. \u0412. \u0418\u0437\u043c\u043e\u0436\u0435\u0440\u043e\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "\u0412. \u041d. \u041a\u0430\u0440\u0435\u0442\u043d\u0438\u043a\u043e\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "M. I. Kharakhulakh"
+              },
+              {
+                "id": null,
+                "name": "\u0410. \u041b. \u0425\u043e\u0445\u043b\u043e\u0432"
+              },
+              {
+                "id": null,
+                "name": "Zhanna Kobalava"
+              },
+              {
+                "id": null,
+                "name": "\u041e. A. Koshelskaya"
+              },
+              {
+                "id": null,
+                "name": "\u0415. \u0414. \u041a\u043e\u0441\u043c\u0430\u0447\u0435\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "V. S. Kostin"
+              },
+              {
+                "id": null,
+                "name": "Natalia Koziolova"
+              },
+              {
+                "id": null,
+                "name": "\u0410.\u0418. \u041a\u0443\u0437\u0438\u043d"
+              },
+              {
+                "id": null,
+                "name": "Victor Lesnov"
+              },
+              {
+                "id": null,
+                "name": "Tatyana Lysenko"
+              },
+              {
+                "id": null,
+                "name": "\u0412. \u0410. \u041c\u0430\u0440\u043a\u043e\u0432"
+              },
+              {
+                "id": null,
+                "name": "Alexander Yur'evich Mayorov"
+              },
+              {
+                "id": null,
+                "name": "Sergey Moiseev"
+              },
+              {
+                "id": null,
+                "name": "S. \u0415. Myasoedova"
+              },
+              {
+                "id": null,
+                "name": "\u041d. \u0410. \u041f\u0435\u0442\u0443\u043d\u0438\u043d\u0430"
+              },
+              {
+                "id": null,
+                "name": "\u0410. \u041f. \u0420\u0435\u0431\u0440\u043e\u0432"
+              },
+              {
+                "id": null,
+                "name": "Ludmila Ruyatkina"
+              },
+              {
+                "id": null,
+                "name": "Julia O. Samoylova"
+              },
+              {
+                "id": null,
+                "name": "Olga V. Sazonova"
+              },
+              {
+                "id": null,
+                "name": "\u041d\u0430\u0442\u0430\u043b\u044c\u044f \u0415\u0433\u043e\u0440\u043e\u0432\u043d\u0430 \u0428\u0438\u043b\u043a\u0438\u043d\u0430"
+              },
+              {
+                "id": null,
+                "name": "\u041d.\u0410. \u0421\u043e\u043a\u043e\u043b\u043e\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "Olga Vasilevskaya"
+              },
+              {
+                "id": null,
+                "name": "N. I. Verbovaya"
+              },
+              {
+                "id": null,
+                "name": "\u0415lena A. Vishneva"
+              },
+              {
+                "id": null,
+                "name": "Sergey N. Vorobyev"
+              },
+              {
+                "id": null,
+                "name": "Natalya Vorokhobina"
+              },
+              {
+                "id": null,
+                "name": "\u041e. \u0412. \u0417\u0430\u043d\u043e\u0437\u0438\u043d\u0430"
+              },
+              {
+                "id": null,
+                "name": "Elena Zhdanova"
+              },
+              {
+                "id": null,
+                "name": "Tatyana Zykova"
+              },
+              {
+                "id": null,
+                "name": "Lesley Burgess"
+              },
+              {
+                "id": null,
+                "name": "Kathleen Coetzee"
+              },
+              {
+                "id": null,
+                "name": "Saleem Dawood"
+              },
+              {
+                "id": null,
+                "name": "Landman Lombard"
+              },
+              {
+                "id": null,
+                "name": "ELLEN MAKONLI MAKOTOKO"
+              },
+              {
+                "id": null,
+                "name": "Rajendran Moodley"
+              },
+              {
+                "id": null,
+                "name": "Wessels Oosthuysen"
+              },
+              {
+                "id": null,
+                "name": "Mohamed Sarvan"
+              },
+              {
+                "id": null,
+                "name": "Carlos Calvo G\u00f3mez"
+              },
+              {
+                "id": null,
+                "name": "Isidoro Cano Rodr\u00edguez"
+              },
+              {
+                "id": null,
+                "name": "Almudena Castro Conde"
+              },
+              {
+                "id": null,
+                "name": "Angel Cequier Fillat"
+              },
+              {
+                "id": null,
+                "name": "Guillem Cuatrecasas Cambra"
+              },
+              {
+                "id": null,
+                "name": "Fernando de \u00c1lvaro Moreno"
+              },
+              {
+                "id": null,
+                "name": "L. de Teresa Parre\u00f1o"
+              },
+              {
+                "id": null,
+                "name": "Javier Delgado\u2010Lista"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 Ram\u00f3n Dom\u00ednguez Escribano"
+              },
+              {
+                "id": null,
+                "name": "Santiago Dur\u00e1n Garc\u00eda"
+              },
+              {
+                "id": null,
+                "name": "Javier Elvira Gonz\u00e1lez"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 Mar\u00eda Fern\u00e1ndez Rodr\u00edguez"
+              },
+              {
+                "id": null,
+                "name": "Alberto Goday Arn\u00f3"
+              },
+              {
+                "id": null,
+                "name": "Ricardo G\u00f3mez\u2010Huelgas"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 Ram\u00f3n Gonz\u00e1lez\u2010Juanatey"
+              },
+              {
+                "id": null,
+                "name": "Antonio Hern\u00e1ndez\u2010Mijares"
+              },
+              {
+                "id": null,
+                "name": "V\u00edctor Alfonso Jim\u00e9nez D\u00edaz"
+              },
+              {
+                "id": null,
+                "name": "Esteban J\u00f3dar Gimeno"
+              },
+              {
+                "id": null,
+                "name": "Tom\u00e1s Lucas Morante"
+              },
+              {
+                "id": null,
+                "name": "M\u00f3nica Marazuela"
+              },
+              {
+                "id": null,
+                "name": "Nieves Martell Claros"
+              },
+              {
+                "id": null,
+                "name": "Didac Mauricio Puente"
+              },
+              {
+                "id": null,
+                "name": "Elena Mena Ribas"
+              },
+              {
+                "id": null,
+                "name": "Juan Francisco Merino-Torres"
+              },
+              {
+                "id": null,
+                "name": "Pedro Mezquita Raya"
+              },
+              {
+                "id": null,
+                "name": "Andreu Nubiola Calonge"
+              },
+              {
+                "id": null,
+                "name": "Xavier Ordo\u00f1ez S\u00e1nchez"
+              },
+              {
+                "id": null,
+                "name": "Jos\u00e9 Mar\u00eda Pascual Izuel"
+              },
+              {
+                "id": null,
+                "name": "Ver\u00f3nica Perea Castilla"
+              },
+              {
+                "id": null,
+                "name": "Antonio P\u00e9rez"
+              },
+              {
+                "id": null,
+                "name": "Isabel Perez Soto"
+              },
+              {
+                "id": null,
+                "name": "Miguel Quesada Charneco"
+              },
+              {
+                "id": null,
+                "name": "Angustias Quesada Sim\u00f3n"
+              },
+              {
+                "id": null,
+                "name": "Josep Red\u00f3n Mas"
+              },
+              {
+                "id": null,
+                "name": "Antonia Rego Iraeta"
+              },
+              {
+                "id": null,
+                "name": "Maria Rodriguez Alvarez"
+              },
+              {
+                "id": null,
+                "name": "Irene Rodr\u0131\u0301guez"
+              },
+              {
+                "id": null,
+                "name": "J. Ruiz"
+              },
+              {
+                "id": null,
+                "name": "Alfonso Gonz\u00e1lez"
+              },
+              {
+                "id": null,
+                "name": "Francisco Tinahones Madueno"
+              },
+              {
+                "id": null,
+                "name": "Carlos Trescol\u00ed Serrano"
+              },
+              {
+                "id": null,
+                "name": "Angels Ulied Armi\u00f1ana"
+              },
+              {
+                "id": null,
+                "name": "Erasmus Bachus"
+              },
+              {
+                "id": null,
+                "name": "Katarina Berndtsson Blom"
+              },
+              {
+                "id": null,
+                "name": "Ken Eliasson"
+              },
+              {
+                "id": null,
+                "name": "Pekka Koskinen"
+              },
+              {
+                "id": null,
+                "name": "Hans Larnefeldt"
+              },
+              {
+                "id": null,
+                "name": "Cornelia Lif-Tiberg"
+              },
+              {
+                "id": null,
+                "name": "Carina Linderfalk"
+              },
+              {
+                "id": null,
+                "name": "Gustav Lund"
+              },
+              {
+                "id": null,
+                "name": "Pia Lundman"
+              },
+              {
+                "id": null,
+                "name": "Linda Moris"
+              },
+              {
+                "id": null,
+                "name": "\u00c5ke Olsson"
+              },
+              {
+                "id": null,
+                "name": "Staffan Salmonsson"
+              },
+              {
+                "id": null,
+                "name": "Johan Berglund"
+              },
+              {
+                "id": null,
+                "name": "Folke Sj\u00f6berg"
+              },
+              {
+                "id": null,
+                "name": "Stefan S\u00f6derberg"
+              },
+              {
+                "id": null,
+                "name": "Ingemar Torstensson"
+              },
+              {
+                "id": null,
+                "name": "Jung\u2010Fu Chen"
+              },
+              {
+                "id": null,
+                "name": "Kai Jen Tien"
+              },
+              {
+                "id": null,
+                "name": "Shih-Ting Tseng"
+              },
+              {
+                "id": null,
+                "name": "Shih\u2010Te Tu"
+              },
+              {
+                "id": null,
+                "name": "Chih\u2010Yuan Wang"
+              },
+              {
+                "id": null,
+                "name": "Ji-Hung Wang"
+              },
+              {
+                "id": null,
+                "name": "Arintaya Phrommintikul"
+              },
+              {
+                "id": null,
+                "name": "Sukit Yamwong"
+              },
+              {
+                "id": null,
+                "name": "Woravut Jintapakorn"
+              },
+              {
+                "id": null,
+                "name": "Pisit Hutayanon"
+              },
+              {
+                "id": null,
+                "name": "Nakarin Sansanayudh"
+              },
+              {
+                "id": null,
+                "name": "L. I. Bazhan"
+              },
+              {
+                "id": null,
+                "name": "I. M. Fushtey"
+              },
+              {
+                "id": null,
+                "name": "Mariya Grachova"
+              },
+              {
+                "id": null,
+                "name": "V.I. Katerenchuk"
+              },
+              {
+                "id": null,
+                "name": "Vadym Korpachev"
+              },
+              {
+                "id": null,
+                "name": "\u041d. \u0410. \u041a\u0440\u0430\u0432\u0447\u0443\u043d"
+              },
+              {
+                "id": null,
+                "name": "\u041e. \u0421. \u041b\u0430\u0440\u0456\u043d"
+              },
+              {
+                "id": null,
+                "name": "Galyna Mykhalchyshyn"
+              },
+              {
+                "id": null,
+                "name": "Halyna Myshanych"
+              },
+              {
+                "id": null,
+                "name": "\u041e.T. Oleksyk"
+              },
+              {
+                "id": null,
+                "name": "Valeriia Orlenko"
+              },
+              {
+                "id": null,
+                "name": "N.V. Pashkovska"
+              },
+              {
+                "id": null,
+                "name": "\u041d. \u041e. \u041f\u0435\u0440\u0446\u0435\u0432\u0430"
+              },
+              {
+                "id": null,
+                "name": "Olena Petrosyan"
+              },
+              {
+                "id": null,
+                "name": "Ivan Smirnov"
+              },
+              {
+                "id": null,
+                "name": "\u041c.V. Vlasenk\u043e"
+              },
+              {
+                "id": null,
+                "name": "Tetiana Zlova"
+              },
+              {
+                "id": null,
+                "name": "Myint Aye"
+              },
+              {
+                "id": null,
+                "name": "A. John Baksi"
+              },
+              {
+                "id": null,
+                "name": "Mathangi Balasubramani"
+              },
+              {
+                "id": null,
+                "name": "Ronnie Beboso"
+              },
+              {
+                "id": null,
+                "name": "Mark Blagden"
+              },
+              {
+                "id": null,
+                "name": "C. Scott Bundy"
+              },
+              {
+                "id": null,
+                "name": "Tobias Cookson"
+              },
+              {
+                "id": null,
+                "name": "A.M. Copland"
+              },
+              {
+                "id": null,
+                "name": "Alistair Emslie\u2010Smith"
+              },
+              {
+                "id": null,
+                "name": "Fiona Green"
+              },
+              {
+                "id": null,
+                "name": "Anthony Gunstone"
+              },
+              {
+                "id": null,
+                "name": "Basil Issa"
+              },
+              {
+                "id": null,
+                "name": "Ewart Jackson-Voyzey"
+              },
+              {
+                "id": null,
+                "name": "Andrew D. Johnson"
+              },
+              {
+                "id": null,
+                "name": "Malcolm MacLean"
+              },
+              {
+                "id": null,
+                "name": "John McKnight"
+              },
+              {
+                "id": null,
+                "name": "Solomon Muzulu"
+              },
+              {
+                "id": null,
+                "name": "Ian O'Connell"
+              },
+              {
+                "id": null,
+                "name": "Babatunde Oyesile"
+              },
+              {
+                "id": null,
+                "name": "Catherine Patterson"
+              },
+              {
+                "id": null,
+                "name": "Ewan R. Pearson"
+              },
+              {
+                "id": null,
+                "name": "Sam Philip"
+              },
+              {
+                "id": null,
+                "name": "Paul D. Smith"
+              },
+              {
+                "id": null,
+                "name": "Usha Sukumaran"
+              },
+              {
+                "id": null,
+                "name": "Jalal Abbas"
+              },
+              {
+                "id": null,
+                "name": "Gaurav Aggarwala"
+              },
+              {
+                "id": null,
+                "name": "Faiq Akhter"
+              },
+              {
+                "id": null,
+                "name": "James Andersen"
+              },
+              {
+                "id": null,
+                "name": "Moise Anglade"
+              },
+              {
+                "id": null,
+                "name": "Georges Argoud"
+              },
+              {
+                "id": null,
+                "name": "Mehrdad Ariani"
+              },
+              {
+                "id": null,
+                "name": "Reswan Ashdji"
+              },
+              {
+                "id": null,
+                "name": "Ladan Bakhtari"
+              },
+              {
+                "id": null,
+                "name": "Subhash Banerjee"
+              },
+              {
+                "id": null,
+                "name": "Andrew Bartlett"
+              },
+              {
+                "id": null,
+                "name": "Howard B. A. Baum"
+              },
+              {
+                "id": null,
+                "name": "Harold Bays"
+              },
+              {
+                "id": null,
+                "name": "Richard Beasley"
+              },
+              {
+                "id": null,
+                "name": "Renata Belfort De Aguiar"
+              },
+              {
+                "id": null,
+                "name": "Sabrina Benjamin"
+              },
+              {
+                "id": null,
+                "name": "Ravi Bhagwat"
+              },
+              {
+                "id": null,
+                "name": "Anuj Bhargava"
+              },
+              {
+                "id": null,
+                "name": "Bruce W. Bode"
+              },
+              {
+                "id": null,
+                "name": "Christina Bratcher"
+              },
+              {
+                "id": null,
+                "name": "Toby Briskin"
+              },
+              {
+                "id": null,
+                "name": "Andrew Brockmyre"
+              },
+              {
+                "id": null,
+                "name": "Raymond Broughton"
+              },
+              {
+                "id": null,
+                "name": "Judith C. Brown"
+              },
+              {
+                "id": null,
+                "name": "Madhusudan Budhraja"
+              },
+              {
+                "id": null,
+                "name": "Kevin Cannon"
+              },
+              {
+                "id": null,
+                "name": "Jewell Carr"
+              },
+              {
+                "id": null,
+                "name": "Harold Cathcart"
+              },
+              {
+                "id": null,
+                "name": "Arvind R. Cavale"
+              },
+              {
+                "id": null,
+                "name": "Louis Chaykin"
+              },
+              {
+                "id": null,
+                "name": "Deanna G. Cheung"
+              },
+              {
+                "id": null,
+                "name": "RICHARD H. CHILDRESS"
+              },
+              {
+                "id": null,
+                "name": "Allan Cohen"
+              },
+              {
+                "id": null,
+                "name": "Jonathan Condit"
+              },
+              {
+                "id": null,
+                "name": "Erin Cooksey"
+              },
+              {
+                "id": null,
+                "name": "George Mitchell Cornett"
+              },
+              {
+                "id": null,
+                "name": "Ira Dauber"
+              },
+              {
+                "id": null,
+                "name": "William Davila"
+              },
+              {
+                "id": null,
+                "name": "Luis De Armas"
+              },
+              {
+                "id": null,
+                "name": "Julius Dean"
+              },
+              {
+                "id": null,
+                "name": "Robert Detweiler"
+              },
+              {
+                "id": null,
+                "name": "E. D\u00edaz"
+              },
+              {
+                "id": null,
+                "name": "Michael Di Giovanna"
+              },
+              {
+                "id": null,
+                "name": "Isaac Dor"
+              },
+              {
+                "id": null,
+                "name": "Waymon Drummond"
+              },
+              {
+                "id": null,
+                "name": "Donald Eagerton"
+              },
+              {
+                "id": null,
+                "name": "John Earl"
+              },
+              {
+                "id": null,
+                "name": "Charles B. Eaton"
+              },
+              {
+                "id": null,
+                "name": "Howard Ellison"
+              },
+              {
+                "id": null,
+                "name": "Neil Farris"
+              },
+              {
+                "id": null,
+                "name": "Thomas Fiel"
+              },
+              {
+                "id": null,
+                "name": "Anthony Firek"
+              },
+              {
+                "id": null,
+                "name": "Brian First"
+              },
+              {
+                "id": null,
+                "name": "Les B. Forgosh"
+              },
+              {
+                "id": null,
+                "name": "William P. French"
+              },
+              {
+                "id": null,
+                "name": "Winston Gandy"
+              },
+              {
+                "id": null,
+                "name": "Ronald G. Garc\u00eda"
+              },
+              {
+                "id": null,
+                "name": "Santosh Gill"
+              },
+              {
+                "id": null,
+                "name": "Murray Gordon"
+              },
+              {
+                "id": null,
+                "name": "Michael Guice"
+              },
+              {
+                "id": null,
+                "name": "Siva Gummadi"
+              },
+              {
+                "id": null,
+                "name": "Jonathan Hackenyos"
+              },
+              {
+                "id": null,
+                "name": "Kristen G. Hairston"
+              },
+              {
+                "id": null,
+                "name": "Lenita Hanson"
+              },
+              {
+                "id": null,
+                "name": "Lindsay Harrison"
+              },
+              {
+                "id": null,
+                "name": "Israel Hartman"
+              },
+              {
+                "id": null,
+                "name": "John F. Heitner"
+              },
+              {
+                "id": null,
+                "name": "Srini Hejeebu"
+              },
+              {
+                "id": null,
+                "name": "Paul Hermany"
+              },
+              {
+                "id": null,
+                "name": "Carlos Hern\u00e1ndez-Cassis"
+              },
+              {
+                "id": null,
+                "name": "Horacio Hidalgo"
+              },
+              {
+                "id": null,
+                "name": "Alexander Higgins"
+              },
+              {
+                "id": null,
+                "name": "Hassan N. Ibrahim"
+              },
+              {
+                "id": null,
+                "name": "Shahram Jacobs"
+              },
+              {
+                "id": null,
+                "name": "David W. Johnson"
+              },
+              {
+                "id": null,
+                "name": "Parag H. Joshi"
+              },
+              {
+                "id": null,
+                "name": "Steven Kaster"
+              },
+              {
+                "id": null,
+                "name": "Daniel Kellum"
+              },
+              {
+                "id": null,
+                "name": "Christopher Kim"
+              },
+              {
+                "id": null,
+                "name": "Ellen Kim"
+              },
+              {
+                "id": null,
+                "name": "William Kirby"
+              },
+              {
+                "id": null,
+                "name": "Albert B. Knouse"
+              },
+              {
+                "id": null,
+                "name": "Steven Kulback"
+              },
+              {
+                "id": null,
+                "name": "Mariananda Kumar"
+              },
+              {
+                "id": null,
+                "name": "Tulsidas Kuruvanka"
+              },
+              {
+                "id": null,
+                "name": "Ajay Labroo"
+              },
+              {
+                "id": null,
+                "name": "William L. Lasswell"
+              },
+              {
+                "id": null,
+                "name": "John Lentz"
+              },
+              {
+                "id": null,
+                "name": "Thomas Lenzmeier"
+              },
+              {
+                "id": null,
+                "name": "David Lewis"
+              },
+              {
+                "id": null,
+                "name": "Zhaoping Li"
+              },
+              {
+                "id": null,
+                "name": "Michael Lillestol"
+              },
+              {
+                "id": null,
+                "name": "Raymond Little"
+              },
+              {
+                "id": null,
+                "name": "Richard S. Lorraine"
+              },
+              {
+                "id": null,
+                "name": "Cecilia McKeown-Biagas"
+              },
+              {
+                "id": null,
+                "name": "Robert McNeill"
+              },
+              {
+                "id": null,
+                "name": "Anand Mehta"
+              },
+              {
+                "id": null,
+                "name": "Alan B. Miller"
+              },
+              {
+                "id": null,
+                "name": "Joseph Moran"
+              },
+              {
+                "id": null,
+                "name": "Emily Morawski"
+              },
+              {
+                "id": null,
+                "name": "Venkatesh Nadar"
+              },
+              {
+                "id": null,
+                "name": "Thomas M. O'Connor"
+              },
+              {
+                "id": null,
+                "name": "Alberto Odio"
+              },
+              {
+                "id": null,
+                "name": "Reginald Parker"
+              },
+              {
+                "id": null,
+                "name": "Rajesh Patel"
+              },
+              {
+                "id": null,
+                "name": "Lawrence S. Phillips"
+              },
+              {
+                "id": null,
+                "name": "George Raad"
+              },
+              {
+                "id": null,
+                "name": "Aref Rahman"
+              },
+              {
+                "id": null,
+                "name": "Marina Raikhel"
+              },
+              {
+                "id": null,
+                "name": "Ajit Raisinghani"
+              },
+              {
+                "id": null,
+                "name": "Raj Rajan"
+              },
+              {
+                "id": null,
+                "name": "Neda Rasouli"
+              },
+              {
+                "id": null,
+                "name": "Frank Rauzi"
+              },
+              {
+                "id": null,
+                "name": "Kathryn Rohr"
+              },
+              {
+                "id": null,
+                "name": "Hal Roseman"
+              },
+              {
+                "id": null,
+                "name": "Sergio Rovner"
+              },
+              {
+                "id": null,
+                "name": "Fadi Saba"
+              },
+              {
+                "id": null,
+                "name": "Richard Sachson"
+              },
+              {
+                "id": null,
+                "name": "Alex Schabauer"
+              },
+              {
+                "id": null,
+                "name": "R Schneider"
+              },
+              {
+                "id": null,
+                "name": "Timothy Schuchard"
+              },
+              {
+                "id": null,
+                "name": "John Sensenbrenner"
+              },
+              {
+                "id": null,
+                "name": "Yshay Shlesinger"
+              },
+              {
+                "id": null,
+                "name": "Narendra Singh"
+              },
+              {
+                "id": null,
+                "name": "Kanagaratnam Sivalingam"
+              },
+              {
+                "id": null,
+                "name": "Larry D. Stonesifer"
+              },
+              {
+                "id": null,
+                "name": "Daniel Storey"
+              },
+              {
+                "id": null,
+                "name": "David Suh"
+              },
+              {
+                "id": null,
+                "name": "Mohammed Tahir"
+              },
+              {
+                "id": null,
+                "name": "Anjanette Tan"
+              },
+              {
+                "id": null,
+                "name": "Marilyn Tan"
+              },
+              {
+                "id": null,
+                "name": "Alain Taylon"
+              },
+              {
+                "id": null,
+                "name": "Maitreya Thakkar"
+              },
+              {
+                "id": null,
+                "name": "Devjit Tripathy"
+              },
+              {
+                "id": null,
+                "name": "Gabriel I. Uwaifo"
+              },
+              {
+                "id": null,
+                "name": "Amarnath Vedere"
+              },
+              {
+                "id": null,
+                "name": "Chandra Venugopal"
+              },
+              {
+                "id": null,
+                "name": "Anthony Vo"
+              },
+              {
+                "id": null,
+                "name": "Michelle Welch"
+              },
+              {
+                "id": null,
+                "name": "James Welker"
+              },
+              {
+                "id": null,
+                "name": "Alexander White"
+              },
+              {
+                "id": null,
+                "name": "John Willis"
+              },
+              {
+                "id": null,
+                "name": "Alan Wynne"
+              },
+              {
+                "id": null,
+                "name": "Shahram Yazdani"
+              },
+              {
+                "id": null,
+                "name": "Jennifer B. Green"
+              },
+              {
+                "id": null,
+                "name": "Anne Rosenberg"
+              },
+              {
+                "id": null,
+                "name": "Lauren Price"
+              },
+              {
+                "id": null,
+                "name": "Kristina N. Sigmon"
+              },
+              {
+                "id": null,
+                "name": "Yuliya Lokhngina"
+              },
+              {
+                "id": null,
+                "name": "Weibing Xing"
+              },
+              {
+                "id": null,
+                "name": "Robert Overton"
+              },
+              {
+                "id": null,
+                "name": "Murray Stewart"
+              },
+              {
+                "id": null,
+                "name": "Janet Stead"
+              },
+              {
+                "id": null,
+                "name": "Alistair C Lindsay"
+              },
+              {
+                "id": null,
+                "name": "Vickas Patel"
+              },
+              {
+                "id": null,
+                "name": "J.C.G. Ross"
+              },
+              {
+                "id": null,
+                "name": "Joseph Soffer"
+              },
+              {
+                "id": null,
+                "name": "Shruti Daga"
+              },
+              {
+                "id": null,
+                "name": "Margaret O. Sowell"
+              },
+              {
+                "id": null,
+                "name": "Prashant Patel"
+              },
+              {
+                "id": null,
+                "name": "Louisa Garvey"
+              },
+              {
+                "id": null,
+                "name": "Jessica Ackert"
+              },
+              {
+                "id": null,
+                "name": "Sybil Abraham"
+              },
+              {
+                "id": null,
+                "name": "Mary Beth Sabol"
+              },
+              {
+                "id": null,
+                "name": "Desma Altobelli"
+              },
+              {
+                "id": null,
+                "name": "JuYoung Ha"
+              },
+              {
+                "id": null,
+                "name": "Mangesh Kulkarni"
+              },
+              {
+                "id": null,
+                "name": "Matthew C. Somerville"
+              },
+              {
+                "id": null,
+                "name": "Drusilla Noronha"
+              },
+              {
+                "id": null,
+                "name": "Ed Casson"
+              },
+              {
+                "id": null,
+                "name": "Eddie Zang"
+              },
+              {
+                "id": null,
+                "name": "Chamandeep Sandhu"
+              },
+              {
+                "id": null,
+                "name": "Rakesh Kumar"
+              },
+              {
+                "id": null,
+                "name": "David Chen"
+              },
+              {
+                "id": null,
+                "name": "Lin Taft"
+              },
+              {
+                "id": null,
+                "name": "R Patel"
+              },
+              {
+                "id": null,
+                "name": "June Ye"
+              },
+              {
+                "id": null,
+                "name": "Jennifer Shannon"
+              },
+              {
+                "id": null,
+                "name": "Tim Wilson"
+              },
+              {
+                "id": null,
+                "name": "Charleen Babi"
+              },
+              {
+                "id": null,
+                "name": "Diane Miller"
+              },
+              {
+                "id": null,
+                "name": "Nigel C. Jones"
+              },
+              {
+                "id": null,
+                "name": "Karl M. Thorpe"
+              },
+              {
+                "id": null,
+                "name": "Rachael Russell"
+              },
+              {
+                "id": null,
+                "name": "Georgina Bull"
+              },
+              {
+                "id": null,
+                "name": "Belinda Hereghty"
+              },
+              {
+                "id": null,
+                "name": "Eva Fernandez-Salazar"
+              },
+              {
+                "id": null,
+                "name": "Troy Longley"
+              },
+              {
+                "id": null,
+                "name": "Jill Donaldson"
+              },
+              {
+                "id": null,
+                "name": "Marie Jarosz"
+              },
+              {
+                "id": null,
+                "name": "Karen Murphy"
+              },
+              {
+                "id": null,
+                "name": "Patricia A. Adams"
+              },
+              {
+                "id": null,
+                "name": "Peter Smith"
+              },
+              {
+                "id": null,
+                "name": "Rachel James"
+              },
+              {
+                "id": null,
+                "name": "Jackie Richards"
+              },
+              {
+                "id": null,
+                "name": "Sangeeta Sedani"
+              },
+              {
+                "id": null,
+                "name": "Denise C. Althouse"
+              },
+              {
+                "id": null,
+                "name": "David I. Watson"
+              },
+              {
+                "id": null,
+                "name": "Jamie Lorimer"
+              },
+              {
+                "id": null,
+                "name": "Steven Lauder"
+              },
+              {
+                "id": null,
+                "name": "R. Schultheis"
+              },
+              {
+                "id": null,
+                "name": "Terese Womer"
+              },
+              {
+                "id": null,
+                "name": "E Philip Wraight"
+              },
+              {
+                "id": null,
+                "name": "Wenyan Li"
+              },
+              {
+                "id": null,
+                "name": "Emma Price-Olsen"
+              },
+              {
+                "id": null,
+                "name": "Anthony Watson"
+              },
+              {
+                "id": null,
+                "name": "Aoife Kelly"
+              },
+              {
+                "id": null,
+                "name": "Patricia J. McLaughlin"
+              },
+              {
+                "id": null,
+                "name": "John Marcus Fleming"
+              },
+              {
+                "id": null,
+                "name": "Jessica Schubert"
+              },
+              {
+                "id": null,
+                "name": "Debra Schleiden"
+              },
+              {
+                "id": null,
+                "name": "Tara Harris"
+              },
+              {
+                "id": null,
+                "name": "Rahul Prakash"
+              },
+              {
+                "id": null,
+                "name": "Jody Breneman"
+              },
+              {
+                "id": null,
+                "name": "Sameer Deshpande"
+              },
+              {
+                "id": null,
+                "name": "Aarti Saswadkar"
+              },
+              {
+                "id": null,
+                "name": "Aditi Kumari"
+              },
+              {
+                "id": null,
+                "name": "Aditi Shitut"
+              },
+              {
+                "id": null,
+                "name": "Amruta Raorane"
+              },
+              {
+                "id": null,
+                "name": "Anisha Karmalkar"
+              },
+              {
+                "id": null,
+                "name": "Ankita Mhambrey"
+              },
+              {
+                "id": null,
+                "name": "Archana Bhosale"
+              },
+              {
+                "id": null,
+                "name": "Ashok Vaphare"
+              },
+              {
+                "id": null,
+                "name": "Ashwini P. Patil"
+              },
+              {
+                "id": null,
+                "name": "Chaitali Khandelwal"
+              },
+              {
+                "id": null,
+                "name": "Fayaz Shaik"
+              },
+              {
+                "id": null,
+                "name": "Madhumitha Nadar"
+              },
+              {
+                "id": null,
+                "name": "Mounika Karka"
+              },
+              {
+                "id": null,
+                "name": "Neha Kadgaonkar"
+              },
+              {
+                "id": null,
+                "name": "Nikita Gupta"
+              },
+              {
+                "id": null,
+                "name": "Nutan Aher"
+              },
+              {
+                "id": null,
+                "name": "Omkar Potnis"
+              },
+              {
+                "id": null,
+                "name": "Pallavi Naicker"
+              },
+              {
+                "id": null,
+                "name": "Rakesh Shinde"
+              },
+              {
+                "id": null,
+                "name": "Richa Sharma"
+              },
+              {
+                "id": null,
+                "name": "Rupali Godse"
+              },
+              {
+                "id": null,
+                "name": "Sheetal Solanki"
+              },
+              {
+                "id": null,
+                "name": "Shruti Sahu"
+              },
+              {
+                "id": null,
+                "name": "Snehal Dumbre"
+              },
+              {
+                "id": null,
+                "name": "Somesh Kumar"
+              },
+              {
+                "id": null,
+                "name": "Suradnya Patil"
+              },
+              {
+                "id": null,
+                "name": "Trisha Mandal"
+              }
+            ],
+            "citationCount": 1815,
+            "date": "2018-10-01",
+            "doi": "10.1016/s0140-6736(18)32261-x",
+            "language": "en",
+            "referenceCount": 24,
+            "title": "Albiglutide and cardiovascular outcomes in patients with type 2 diabetes and cardiovascular disease (Harmony Outcomes): a double-blind, randomised placebo-controlled trial",
+            "type": "article",
+            "year": 2018
+          },
+          "type": "publication",
+          "version": 1
+        }
+      ],
+      "highlights": [
+        "# Albiglutide and cardiovascular outcomes in patients with type 2 diabetes and cardiovascular disease (Harmony Outcomes): a double-blind, randomised placebo-controlled trial\n...\nBackground Glucagon-like peptide 1 receptor agonists differ in chemical structure, duration of action, and in their effects on clinical outcomes. The cardiovascular effects of once-weekly albiglutide in type 2 diabetes are unknown. We aimed to determine the safety and efficacy of albiglutide in preventing cardiovascular death, myocardial infarction, or stroke. We did a double-blind, randomised, placebo-controlled trial in 610 sites across 28 countries. We randomly assigned patients aged 40 years and older with type 2 diabetes and cardiovascular disease (at a 1:1 ratio) to groups that either received a subcutaneous injection of albiglutide (30-50 mg, based on glycaemic response and tolerability) or of a matched volume of placebo once a week, in addition to their standard care. Investigators used an interactive voice or web response system to obtain treatment assignment, and patients and all study investigators were masked to their treatment allocation. We hypothesised that albiglutide would be non-inferior to placebo for the primary outcome of the first occurrence of cardiovascular death, myocardial infarction, or stroke, which was assessed in the intention-totreat population. If non-inferiority was confirmed by an upper limit of the 95% CI for a hazard ratio of less than 1\u202230, closed testing for superiority was prespecified. This study is registered with ClinicalTrials.gov, number NCT02465515. Findings Patients were screened between July 1, 2015, and Nov 24, 2016. 10 793 patients were screened and 9463 participants were enrolled and randomly assigned to groups: 4731 patients were assigned to receive albiglutide and 4732 patients to receive placebo. On Nov 8, 2017, it was determined that 611 primary endpoints and a median follow-up of at least 1\u20225 years had accrued, and participants returned for a final visit and discontinuation from study treatment; the last patient visit was on March 12, 2018. These 9463 patients, the intention-to-treat population, were evaluated for a median duration of 1\u20226 years and were assessed for the primary outcome. The primary composite outcome occurred in 338 (7%) of 4731 patients at an incidence rate of 4\u20226 events per 100 person-years in the albiglutide group and in 428 (9%) of 4732 patients at an incidence rate of 5\u20229 events per 100 person-years in the placebo group (hazard ratio 0\u202278, 95% CI 0\u202268-0\u202290), which indicated that albiglutide was superior to placebo (p<0\u20220001 for noninferiority; p=0\u20220006 for superiority). The incidence of acute pancreatitis (ten patients in the albiglutide group and seven patients in the placebo group), pancreatic cancer (six patients in the albiglutide group and five patients in the placebo group), medullary thyroid carcinoma (zero patients in both groups), and other serious adverse events did not differ between the two groups. There were three (<1%) deaths in the placebo group that were assessed by investigators, who were masked to study drug assignment, to be treatment-related and two (<1%) deaths in the albiglutide group. Interpretation In patients with type 2 diabetes and cardiovascular disease, albiglutide was superior to placebo with respect to major adverse cardiovascular events. Evidence-based glucagon-like peptide 1 receptor agonists should therefore be considered as part of a comprehensive strategy to reduce the risk of cardiovascular events in patients with type 2 diabetes.\n...\nAlbiglutide is a GLP-1 receptor agonist that is generated through genetic fusion of two tandem copies of modified human GLP-1 (with 97% aminoacid sequence homology to endogenous human GLP-1 fragment 7-36) to human albumin, and the resultant protein is sufficiently longacting to be injected weekly. 9, 10 In accordance with regulatory guidance, we aimed to assess the cardiovascular safety and efficacy of albiglutide in Harmony Outcomes, a trial that enrolled patients with type 2 diabetes and cardiovascular disease. 11 medullary carcinoma of the thyroid or multiple endocrine neoplasia type 2, a history of pancreatic neuroendocrine tumours, or current use of a GLP-1 receptor agonist. A complete list of trial inclusion and exclusion criteria is provided in the protocol (appendix 2). The protocol was approved by the ethics committee at each participating site and all patients provided written informed consent. An independent data and safety monitoring committee, with access to unblinded data, performed regular safety surveillance.\n...\ninfarction, and stroke, relative to the control group (hazard ratio 0\u202287, 95% CI 0\u202278-0\u202297; p<0\u2022001 for non-inferiority; p=0\u202201 for superiority). Semaglutide, which is also structurally homologous to native GLP-1, was studied in 3297 similar participants in the SUSTAIN-6 trial, which showed, over a median duration of 2\u20221 years, that once-weekly semaglutide was non-inferior to placebo for MACE (0\u202274, 0\u202258-0\u202295; p<0\u2022001 for non-inferiority). The ELIXA trial included 6068 patients with type 2 diabetes and a recent acute coronary syndrome, who were followed up for a median duration of 2\u20221 years. Patients were randomly assigned to receive placebo or once-daily lixisenatide, an exendin-4 based GLP-1 receptor agonist, which was added to standard care. Lixisenatide was non-inferior to placebo for the primary composite outcome of MACE plus unstable angina (1\u202202, 0\u202289-1\u202217; p<0\u2022001 for non-inferiority). The EXSCEL trial included 14 752 patients with type 2 diabetes and cardiovascular disease or cardiovascular risk factors, who were followed up for a median duration of 3\u20222 years. Patients were randomly assigned to receive placebo or once-weekly exenatide, which is an exendin-4 based GLP-1 receptor agonist, which was added to standard care. Exenatide was non-inferior to placebo for the primary composite outcome of MACE (0\u202291, 0\u202283-1\u202200; p<0\u2022001 for noninferiority; p=0\u202206 for superiority). There seems to be variation in the results of previous trials with GLP-1 receptor agonists that, if correct,\n...\nThe results of the Harmony Outcomes trial showed that albiglutide, a GLP-1 receptor ligand that is structurally homologous with native GLP-1, when administered once-weekly over a median duration of 1\u20226 years, reduced the risk of MACE when added to standard care in patients with type 2 diabetes and cardiovascular disease. These data suggest that certain GLP-1 receptor agonists reduce the risk of atherothrombotic events in patients with type 2 diabetes and high cardiovascular risk.\n...\nThe primary composite endpoint occurred in 338 (7%) of 4731 patients at an event rate of 4\u202257 events per 100 person-years in the albiglutide group and in 428 (9%) of 4732 patients at an event rate of 5\u202287 events per 100 person-years in the placebo group (HR 0\u202278, 95% CI 0\u202268-0\u202290), indicating that albiglutide was both non-inferior to placebo for cardiovascular safety (p<0\u20220001 for non-inferiority) and superior to placebo for efficacy (p=0\u20220006 for superiority; table 2 and figure 2 ). The HRs for each of the components of the composite were 0\u202293 (95% CI 0\u202273-1\u202219) for death from cardiovascular causes, 0\u202275 (0\u202261-0\u202290) for myocardial infarction, and 0\u202286 (0\u202266-1\u202214) for stroke. Prespecified subgroup analyses are shown in figure 3 . Three of 19 subgroups showed a nominally significant interaction between treatment and subgroup.\n...\nIn patients with type 2 diabetes and cardiovascular disease who were receiving standard care, addition of once-weekly albiglutide reduced the risk of the primary composite outcome-death from cardiovascular causes, non-fatal myocardial infarction, or non-fatal stroke-by 22%, compared with the addition of placebo. 50 patients would need to be treated with albiglutide to prevent one event over a median duration of 1\u20226 years."
+      ],
+      "id": "https://exa.ai/library/publication/d5pk240v077",
+      "publishedDate": "2018-10-01T00:00:00.000Z",
+      "title": "Albiglutide and cardiovascular outcomes in patients with type 2 diabetes and cardiovascular disease (Harmony Outcomes): a double-blind, randomised placebo-controlled trial",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/30291013/"
+    },
+    {
+      "author": "Darren K. McGuire, Nikolaus Marx, Sharon L. Mulvagh, John Deanfield, Silvio E. Inzucchi, Rodica Pop\u2010Busui, et al.",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/publication/rgmns8xgcvc",
+          "properties": {
+            "abstract": "BACKGROUND: The cardiovascular safety of oral semaglutide, a glucagon-like peptide 1 receptor agonist, has been established in persons with type 2 diabetes and high cardiovascular risk. An assessment of the cardiovascular efficacy of oral semaglutide in persons with type 2 diabetes and atherosclerotic cardiovascular disease, chronic kidney disease, or both is needed. METHODS: In this double-blind, placebo-controlled, event-driven, superiority trial, we randomly assigned participants who were 50 years of age or older, had type 2 diabetes with a glycated hemoglobin level of 6.5 to 10.0%, and had known atherosclerotic cardiovascular disease, chronic kidney disease, or both to receive either once-daily oral semaglutide (maximal dose, 14 mg) or placebo, in addition to standard care. The primary outcome was major adverse cardiovascular events (a composite of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke), assessed in a time-to-first-event analysis. The confirmatory secondary outcomes included major kidney disease events (a five-point composite outcome). RESULTS: Among the 9650 participants who had undergone randomization, the mean (\u00b1SD) follow-up was 47.5\u00b110.9 months, and the median follow-up was 49.5 months. A primary-outcome event occurred in 579 of the 4825 participants (12.0%; incidence, 3.1 events per 100 person-years) in the oral semaglutide group, as compared with 668 of the 4825 participants (13.8%; incidence, 3.7 events per 100 person-years) in the placebo group (hazard ratio, 0.86; 95% confidence interval, 0.77 to 0.96; P = 0.006). The results for the confirmatory secondary outcomes did not differ significantly between the two groups. The incidence of serious adverse events was 47.9% in the oral semaglutide group and 50.3% in the placebo group; the incidence of gastrointestinal disorders was 5.0% and 4.4%, respectively. CONCLUSIONS: Among persons with type 2 diabetes and atherosclerotic cardiovascular disease, chronic kidney disease, or both, the use of oral semaglutide was associated with a significantly lower risk of major adverse cardiovascular events than placebo, without an increase in the incidence of serious adverse events. (Funded by Novo Nordisk; SOUL ClinicalTrials.gov number, NCT03914326.).",
+            "authors": [
+              {
+                "id": null,
+                "name": "Darren K. McGuire"
+              },
+              {
+                "id": null,
+                "name": "Nikolaus Marx"
+              },
+              {
+                "id": null,
+                "name": "Sharon L. Mulvagh"
+              },
+              {
+                "id": null,
+                "name": "John Deanfield"
+              },
+              {
+                "id": null,
+                "name": "Silvio E. Inzucchi"
+              },
+              {
+                "id": null,
+                "name": "Rodica Pop\u2010Busui"
+              },
+              {
+                "id": null,
+                "name": "Johannes F.E. Mann"
+              },
+              {
+                "id": null,
+                "name": "Scott S. Emerson"
+              },
+              {
+                "id": null,
+                "name": "Neil R Poulter"
+              },
+              {
+                "id": null,
+                "name": "Mads D.M. Engelmann"
+              },
+              {
+                "id": null,
+                "name": "Maria Sejersten Ripa"
+              },
+              {
+                "id": null,
+                "name": "G. Kees Hovingh"
+              },
+              {
+                "id": null,
+                "name": "Kirstine Brown\u2010Frandsen"
+              },
+              {
+                "id": null,
+                "name": "Stephen C. Bain"
+              },
+              {
+                "id": null,
+                "name": "Matthew A. Cavender"
+              },
+              {
+                "id": null,
+                "name": "Mette Gislum"
+              },
+              {
+                "id": null,
+                "name": "Jens\u2010Peter David"
+              },
+              {
+                "id": null,
+                "name": "John B. Buse"
+              }
+            ],
+            "citationCount": 323,
+            "date": "2025-03-29",
+            "doi": "10.1056/nejmoa2501006",
+            "language": "en",
+            "referenceCount": 23,
+            "title": "Oral Semaglutide and Cardiovascular Outcomes in High-Risk Type 2 Diabetes",
+            "type": "article",
+            "year": 2025
+          },
+          "type": "publication",
+          "version": 1
+        }
+      ],
+      "highlights": [
+        "The cardiovascular safety of oral semaglutide, a glucagon-like peptide 1 receptor agonist, has been established in persons with type 2 diabetes and high cardiovascular risk. An assessment of the cardiovascular efficacy of oral semaglutide in persons with type 2 diabetes and atherosclerotic cardiovascular disease, chronic kidney disease, or both is needed. In this double-blind, placebo-controlled, event-driven, superiority trial, we randomly assigned participants who were 50 years of age or older, had type 2 diabetes with a glycated hemoglobin level of 6.5 to 10.0%, and had known atherosclerotic cardiovascular disease, chronic kidney disease, or both to receive either once-daily oral semaglutide (maximal dose, 14 mg) or placebo, in addition to standard care. The primary outcome was major adverse cardiovascular events (a composite of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke), assessed in a time-to-first-event analysis. The confirmatory secondary outcomes included major kidney disease events (a five-point composite outcome). Among the 9650 participants who had undergone randomization, the mean (\u00b1SD) follow-up was 47.5\u00b110.9 months, and the median follow-up was 49.5 months. A primary-outcome event occurred in 579 of the 4825 participants (12.0%; incidence, 3.1 events per 100 person-years) in the oral semaglutide group, as compared with 668 of the 4825 participants (13.8%; incidence, 3.7 events per 100 person-years) in the placebo group (hazard ratio, 0.86; 95% confidence interval, 0.77 to 0.96; P = 0.006). The results for the confirmatory secondary outcomes did not differ significantly between the two groups. The incidence of serious adverse events was 47.9% in the oral semaglutide group and 50.3% in the placebo group; the incidence of gastrointestinal disorders was 5.0% and 4.4%, respectively. Among persons with type 2 diabetes and atherosclerotic cardiovascular disease, chronic kidney disease, or both, the use of oral semaglutide was associated with a significantly lower risk of major adverse cardiovascular events than placebo, without an increase in the incidence of serious adverse events. (Funded by Novo Nordisk; SOUL ClinicalTrials.gov number, NCT03914326.\n...\nA pproximately 828 million adults worldwide are affected by diabetes, 1 with type 2 diabetes accounting for more than 90% of cases. 2 Type 2 diabetes is associated with a high risk of cardiovascular disease. 3, 4 Trials designed to assess cardiovascular outcomes in persons with type 2 diabetes have shown that certain glucagon-like peptide 1 (GLP-1) receptor agonists and certain sodium-glucose cotransporter 2 (SGLT2) inhibitors reduce the risk of major adverse cardiovascular events. [5] [6] ] [7] Semaglutide is a long-acting GLP-1 receptor agonist. For the injectable formulation of semaglutide, cardiovascular efficacy has been established in persons with type 2 diabetes and cardiovascular disease or a high risk of cardiovascular disease, as well as in those with type 2 diabetes and chronic kidney disease. 5, 8, 9 For the oral formulation of semaglutide, cardiovascular safety has been established in persons with type 2 diabetes and high cardiovascular risk, 10 but an assessment of cardiovascular efficacy is needed. The Semaglutide Cardiovascular Outcomes Trial (SOUL) was designed to assess the cardiovascular efficacy of oral semaglutide in persons with type 2 diabetes and established atherosclerotic cardiovascular disease, chronic kidney disease, or both.\n...\nWe conducted an international, double-blind, randomized, placebo-controlled, event-driven, superiority phase 3b trial. The trial design has been described previously 11 and is summarized in Figure S1 in the Supplementary Appendix, available with the full text of this article at NEJM.org.\n...\nThe primary outcome was major adverse cardiovascular events (a three-point composite of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke), assessed in an analysis of the time from randomization to the first event. The confirmatory secondary outcomes were three time-to-first-event outcomes tested in hierarchical order: major kidney disease events (a five-point composite of death from cardiovascular causes, death from kidney-related causes, a persistent reduction from baseline in the eGFR of \u226550% as measured with the Chronic Kidney Disease Epidemiology Collaboration method, 12 a persistent eGFR of <15 ml per minute per 1.73 m 2 , or the initiation of long-term kidney-replacement therapy with either dialysis or transplantation); death from cardiovascular causes; and major adverse limb events (a two-point composite of hospitalization for acute limb ischemia or hospitalization for chronic limb ischemia).\n...\nA primary-outcome event occurred in 579 of the 4825 participants (12.0%; incidence, 3.1 events per 100 person-years) in the oral semaglutide group, as compared with 668 of the 4825 participants (13.8%; incidence, 3.7 events per 100 person-years) in the placebo group (hazard ratio, 0.86; 95% confidence interval [CI], 0.77 to 0.96; P = 0.006), results that showed the superiority of oral semaglutide over placebo (Fig. 1A and Table 2 ). In a prespecified analysis of primary-outcome events occurring through week 156 (3 years), the absolute risk reduction (difference in risk between the oral semaglutide group and the placebo group) was 2.0 percentage points, and the number needed to treat to prevent one event in this population was 50 persons (95% CI, 31 to 125). The effect of oral semaglutide with respect to the primary outcome was consistent across prespecified sensitivity analyses (Table S3 ) and appeared to be consistent across most analyses of prespecified subgroups, including those defined according to age, sex, body-mass index, a history of cardiovascular or kidney disease, eGFR, and medication use at baseline (Fig. S4 ).\n...\nIn this randomized, placebo-controlled trial involving persons with type 2 diabetes and atherosclerotic cardiovascular disease, chronic kidney disease, or both, daily oral semaglutide was superior to placebo in reducing the risk of major adverse cardiovascular events. Supported by Novo Nordisk. Disclosure forms provided by the authors are available with the full text of this article at NEJM.org.\n...\n-point | 579 (12.0) | 3.1 | 668 (13.8) | 3.7 | 0.86 (0.77-0.96) | 0.006 composite \u2021 Confirmatory secondary outcomes Major kidney disease events, five-point composite \u00a7 | 403 (8.4) | 2.1 | 435 (9.0) | 2.3 | 0.91 (0.80-1.05) | 0.19 Death from cardiovascular causes | 301 (6.2) | 1.6 | 320 (6.6) | 1.7 | 0.93 (0.80-1.09) | - Major adverse limb events, two-point composite \u00b6 | 71 (1.5) | 0.4 | 99 (2.1) | 0.5 | 0.71 (0.52-0.96) | - Supportive secondary outcomes Major adverse cardiovascular events, five-point com- | 670 (13.9) | 3.6 | 777 (16.1) | 4.3 | 0.84 (0.76-0.93) | - posite\u2016 Nonfatal myocardial infarction | 191 (4.0) | 1.0 | 253 (5.2) | 1.4 | 0.74 (0.61-0.89) | - Fatal or nonfatal myocardial infarction | 200 (4.1) | 1.1 | 268 (5.6) | 1.4 | 0.73 (0.61-0.88) | - Nonfatal stroke | 144 (3.0) | 0.8 | 161 (3.3) | 0.9 | 0.88 (0.70-1.11) | - Fatal or nonfatal stroke | 164 (3.4) | 0.9 | 171 (3.5) | 0.9 | 0.95 (0.76-1.17) | - Coronary revascularization | 200 (4.1) | 1.1 | 263 (5.5) | 1.4 | 0.75 (0.62-0.90) | - Hospitalization for unstable angina pectoris | 74 (1.5) | 0.4 | 80 (1.7) | 0.4 | 0.92 (0.67-1.26) | - Death from any cause | 528 (10.9) | 2.8 | 577 (12.0) | 3.0 | 0.91 (0.80-1.02) | - Death from noncardiovascular causes | 227 (4.7) | 1.2 | 257 (5.3) | 1.4 | 0.87 (0.73-1.04) | - Heart failure events, three-point composite** | 405 (8.4) | 2.1 | 443 (9.2) | 2.4 | 0.90 (0.79-1.03) | - Heart failure | 146 (3.0) | 0.8 | 167 (3.5) | 0.9 | 0.86 (0.69-1.08) | - Major kidney disease events, four-point composite \u2020 \u2020 112 (2.3) | 0.6 | 129 (2.7) | 0.7 | 0.86 (0.66-1.10) | - Death from kidney-related causes | 1 (<0.1) | <0.1 | 7 (0.1) | <0.1 | 0.14 (0.01-0.79) |"
+      ],
+      "id": "https://exa.ai/library/publication/rgmns8xgcvc",
+      "publishedDate": "2025-03-29T00:00:00.000Z",
+      "title": "Oral Semaglutide and Cardiovascular Outcomes in High-Risk Type 2 Diabetes",
+      "url": "https://doi.org/10.1056/nejmoa2501006"
+    },
+    {
+      "author": "Mansoor Husain, Andreas L. Birkenfeld, Morten Donsmark, Kathleen Dungan, Freddy G. Eliaschewitz, Denise Reis Franco, et al.",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/publication/07gbf7xvvjl",
+          "properties": {
+            "abstract": "Establishing cardiovascular safety of new therapies for type 2 diabetes is important. Safety data are available for the subcutaneous form of the glucagon-like peptide-1 receptor agonist semaglutide but are needed for oral semaglutide.",
+            "authors": [
+              {
+                "id": null,
+                "name": "Mansoor Husain"
+              },
+              {
+                "id": null,
+                "name": "Andreas L. Birkenfeld"
+              },
+              {
+                "id": null,
+                "name": "Morten Donsmark"
+              },
+              {
+                "id": null,
+                "name": "Kathleen Dungan"
+              },
+              {
+                "id": null,
+                "name": "Freddy G. Eliaschewitz"
+              },
+              {
+                "id": null,
+                "name": "Denise Reis Franco"
+              },
+              {
+                "id": null,
+                "name": "Ole Kleist Jeppesen"
+              },
+              {
+                "id": null,
+                "name": "Ildiko Lingvay"
+              },
+              {
+                "id": null,
+                "name": "Ofri Mosenzon"
+              },
+              {
+                "id": null,
+                "name": "Sue D. Pedersen"
+              },
+              {
+                "id": null,
+                "name": "Cees J. Tack"
+              },
+              {
+                "id": null,
+                "name": "Mette S. Thomsen"
+              },
+              {
+                "id": null,
+                "name": "Tina Vilsb\u00f8ll"
+              },
+              {
+                "id": null,
+                "name": "Mark Warren"
+              },
+              {
+                "id": null,
+                "name": "Stephen C. Bain"
+              }
+            ],
+            "citationCount": 1958,
+            "date": "2019-06-11",
+            "doi": "10.1056/nejmoa1901118",
+            "language": "en",
+            "referenceCount": 26,
+            "title": "Oral Semaglutide and Cardiovascular Outcomes in Patients with Type 2 Diabetes",
+            "type": "article",
+            "year": 2019
+          },
+          "type": "publication",
+          "version": 1
+        }
+      ],
+      "highlights": [
+        "Establishing cardiovascular safety of new therapies for type 2 diabetes is important. Safety data are available for the subcutaneous form of the glucagon-like peptide-1 receptor agonist semaglutide but are needed for oral semaglutide. We assessed cardiovascular outcomes of once-daily oral semaglutide in an event-driven, randomized, double-blind, placebo-controlled trial involving patients at high cardiovascular risk (age of \u226550 years with established cardiovascular or chronic kidney disease, or age of \u226560 years with cardiovascular risk factors only). The primary outcome in a timeto-event analysis was the first occurrence of a major adverse cardiovascular event (death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke). The trial was designed to rule out 80% excess cardiovascular risk as compared with placebo (noninferiority margin of 1.8 for the upper boundary of the 95% confidence interval for the hazard ratio for the primary outcome). A total of 3183 patients were randomly assigned to receive oral semaglutide or placebo. The mean age of the patients was 66 years; 2695 patients (84.7%) were 50 years of age or older and had cardiovascular or chronic kidney disease. The median time in the trial was 15.9 months. Major adverse cardiovascular events occurred in 61 of 1591 patients (3.8%) in the oral semaglutide group and 76 of 1592 (4.8%) in the placebo group (hazard ratio, 0.79; 95% confidence interval [CI], 0.57 to 1.11; P<0.001 for noninferiority). Results for components of the primary outcome were as follows: death from cardiovascular causes, 15 of 1591 patients (0.9%) in the oral semaglutide group and 30 of 1592 (1.9%) in the placebo group (hazard ratio, 0.49; 95% CI, 0.27 to 0.92); nonfatal myocardial infarction, 37 of 1591 patients (2.3%) and 31 of 1592 (1.9%), respectively (hazard ratio, 1.18; 95% CI, 0.73 to 1.90); and nonfatal stroke, 12 of 1591 patients (0.8%) and 16 of 1592 (1.0%), respectively (hazard ratio, 0.74; 95% CI, 0.35 to 1.57). Death from any cause occurred in 23 of 1591 patients (1.4%) in the oral semaglutide group and 45 of 1592 (2.8%) in the placebo group (hazard ratio, 0.51; 95% CI, 0.31 to 0.84). Gastrointestinal adverse events leading to discontinuation of oral semaglutide or placebo were more common with oral semaglutide. In this trial involving patients with type 2 diabetes, the cardiovascular risk profile of oral semaglutide was not inferior to that of placebo.\n...\nT h e ne w e ngl a nd jou r na l o f m e dicine C ardiovascular disease is the primary cause of death in patients with type 2 diabetes, 1 and the ruling out of an excess cardiovascular risk is a regulatory requirement for new glucose-lowering therapies. 2, 3 ] [6] [7] [8] [9] [10] [11] These agents have shown cardiovascular safety (lixisenatide 12 and exenatide 13 ) and, in several cases, benefit (liraglutide, 14 albiglutide, 15 semaglutide, 16 and, most recently, dulaglutide 17 ). For example, in the Trial to Evaluate Cardiovascular and Other Long-term Outcomes with Semaglutide in Subjects with Type 2 Diabetes (SUSTAIN-6), patients who received a onceweekly subcutaneous injection of semaglutide had a 26% lower risk of the primary cardiovascular outcome than those who received placebo. 16 ecent diabetes and cardiology treatment guidelines recommend GLP-1 receptor agonists as a second-line treatment option for adults with type 2 diabetes. 18, 19 ll currently approved GLP-1 receptor agonists are administered subcutaneously. Oral semaglutide has been developed as a once-daily tablet, which may allay concerns about injections among some patients and clinicians 20 and result in earlier initiation of GLP-1 receptor agonist therapy. As compared with once-weekly subcutaneous semaglutide, oral semaglutide has a different absorption profile. 21, 22 However, once the drug is absorbed, the pharmacokinetic properties and effects of semaglutide are similar, regardless of the route of administration. 21, 22 The present randomized, placebo-controlled, phase 3a trial, Peptide Innovation for Early Diabetes Treatment (PIONEER) 6, is a preapproval cardiovascular outcomes trial specifically designed to rule out an excess in cardiovascular risk with oral semaglutide among patients with type 2 diabetes.\n...\n## Cardiovascular Outcomes\n...\nThe primary outcome occurred in 61 of 1591 patients (3.8%) receiving oral semaglutide and 76 of 1592 (4.8%) receiving placebo. Thus, noninferiority was confirmed for oral semaglutide as compared with placebo, both added to stan- dard-of-care treatment, with a point estimate corresponding to a 21% difference in risk (hazard ratio, 0.79; 95% confidence interval [CI], 0.57 to 1.11; P<0.001 for noninferiority; P = 0.17 for superiority) (Fig. 1 and Table 2 ). Sensitivity analyses were consistent with the primary analysis (Fig. S4 in the Supplementary Appendix). The hazard ratio for the expanded outcome was similar to that for the primary outcome (with events in 83 of 1591 patients [5.2%] in the oral semaglutide group and 100 of 1592 [6.3%] in the placebo group; hazard ratio, 0.82; 95% CI, 0.61 to 1.10) (Table 2 , and Fig. S5 in the Supplementary Appendix), as was the composite of death from any cause, nonfatal myocardial infarction, or nonfatal stroke (with events in 69 of 1591 patients [4.3%] and 89 of 1592 [5.6%], respectively; hazard ratio, 0.77; 95% CI, 0.56 to 1.05).\n...\nThis cardiovascular outcomes trial met its primary objective of ruling out an 80% excess cardiovascular risk with oral semaglutide, confirming noninferiority to placebo for the primary outcome (hazard ratio, 0.79; 95% CI, 0.57 to 1.11). ] [14] [15] [16] Significant benefits with to the primary outcome were observed in three cardiovascular outcomes trials of GLP-1 receptor agonists (liraglutide in the Liraglutide Effect and Action in Diabetes: Evaluation of Cardiovascular Outcome Results [LEADER] trial, 14 albiglutide in the Harmony Outcomes trial, 15 and subcutaneous semaglutide in SUSTAIN-6 16 ) as well as for dulaglutide in the Researching Cardiovascular Events with a Weekly Incretin in Diabetes (REWIND) trial. 17 The SUSTAIN-6 and LEADER trials were prespecified to be of longer duration than the current trial, 14, 16 * Outcomes are first events that were positively adjudicated by the external adjudication committee. Data are for the full analysis set during the in-trial observation period (from randomization to the final follow-up visit). Deaths from cardiovascular causes included deaths for which the cause was undetermined. CI denotes confidence interval. \u2020 The primary outcome was a composite of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke. \u2021 P<0.001 for noninferiority, P = 0.17 for superiority. The primary outcome analysis was controlled for multiple comparisons. Confidence intervals for other analyses have not been adjusted for multiple comparisons. \u00a7 The expanded composite outcome consisted of death from cardiovascular causes, nonfatal myocardial infarction, nonfatal stroke, unstable angina resulting in hospitalization, or heart failure resulting in hospitalization. T h e ne w e ngl a nd jou r na l o f m e dicine trial was designed to randomly assign approximately three times as many patients as were enrolled in our trial. 15 Consequently, fewer events were observed in our trial (in 137 of 3183 patients) than in SUSTAIN-6 (in 254 of 3297), 16 the LEADER trial (in 1302 of 9340), 14 or the Harmony Outcomes trial (in 766 of 9463). 15 However, the hazard ratios were similar in the present trial and SUSTAIN-6, 16 which may suggest that the car-diovascular effect of semaglutide is independent of the route of administration.\n...\nIn conclusion, the present trial showed noninferiority of oral semaglutide to placebo (hazard ratio, 0.79; 95% CI, 0.57 to 1.11), ruling out an 80% excess cardiovascular risk. Gastrointestinal adverse events were the major reason for discontinuation of oral semaglutide."
+      ],
+      "id": "https://exa.ai/library/publication/07gbf7xvvjl",
+      "publishedDate": "2019-06-11T00:00:00.000Z",
+      "title": "Oral Semaglutide and Cardiovascular Outcomes in Patients with Type 2 Diabetes",
+      "url": "https://doi.org/10.1056/nejmoa1901118"
+    },
+    {
+      "highlights": [
+        "Subcutaneous infusion of exenatide and cardiovascular outcomes in type 2 diabetes: a non-inferiority randomized controlled trial | Nature Medicine\n...\n# Subcutaneous infusion of exenatide and cardiovascular outcomes in type 2 diabetes: a non-inferiority randomized controlled trial\n...\nGlucagon-like peptide 1 receptor agonists (GLP-1RAs) injected periodically have been shown to not increase and, for some members of this class, decrease the risk of cardiovascular events. The cardiovascular safety of delivering a continuous subcutaneous infusion of the GLP-1RA exenatide (ITCA 650) is unknown. Here, we randomly assigned patients with type 2 diabetes with, or at risk for, atherosclerotic cardiovascular disease (ASCVD) to receive ITCA 650 or placebo to assess cardiovascular safety in a pre-approval trial (NCT01455896). The primary outcome was a composite of cardiovascular death, non-fatal myocardial infarction, non-fatal stroke or hospitalization for unstable angina. On the basis of 2008 guidance from the US Food and Drug Administration, a non-inferiority margin of 1.8 for the upper bound of the 95% confidence interval (CI) of the hazard ratio (HR) was used. We randomized 4,156 patients (2,075 assigned to receive ITCA 650 and 2,081 assigned to receive placebo) who were followed for a median of 16 months. The primary outcome occurred in 4.6% (95/2,075) of patients in the ITCA 650 group and 3.8% (79/2,081) of patients in the placebo group, meeting the pre-specified non-inferiority criterion (HR = 1.21, 95% CI, 0.90\u20131.63, *P*non-inferiority = 0.004). Serious adverse events were similar between the two groups. Adverse events were more frequent in the ITCA 650 group (72%, 1,491/2,074) than in the placebo group (63.9%, 1,325/2,070), mainly due to an increase in gastrointestinal events and disorders while on ITCA 650. In patients with type 2 diabetes with, or at risk for, ASCVD, ITCA 650 was non-inferior to placebo. A larger and longer-duration cardiovascular outcomes trial is needed to define more precisely the cardiovascular effects of ITCA 650 in this population."
+      ],
+      "id": "https://www.nature.com/articles/s41591-021-01584-3",
+      "image": "https://media.springernature.com/m685/springer-static/image/art%3A10.1038%2Fs41591-021-01584-3/MediaObjects/41591_2021_1584_Fig1_HTML.png",
+      "publishedDate": "2021-12-06T00:00:00.000Z",
+      "title": "Subcutaneous infusion of exenatide and cardiovascular outcomes in type 2 diabetes: a non-inferiority randomized controlled trial | Nature Medicine",
+      "url": "https://www.nature.com/articles/s41591-021-01584-3"
+    }
+  ],
+  "searchTime": 527.1
+}

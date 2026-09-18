@@ -25,15 +25,29 @@ def format_plan(topics: Sequence[JsonMapping], *, wave: int | None = None) -> li
     lines = [f"[plan] {label} — {n} {noun}"]
     for topic in topics:
         tid = topic.get("id") or "?"
+        # A checkpoint written before topics carried a lane reads as web.
+        focus = topic.get("focus") or "web"
         query = (topic.get("query") or "").strip()
-        lines.append(f"  {tid}  {query}")
+        lines.append(f"  {tid} [{focus}]  {query}")
     return lines
+
+
+def _is_paper(hit: dict) -> bool:
+    """A publication lane hit, or an Elicit row from a pre-focus checkpoint."""
+    return hit.get("focus") == "publication" or hit.get("provider") == "elicit"
+
+
+def _is_web(hit: dict) -> bool:
+    """A web lane hit; a focus-less Exa row is a pre-focus checkpoint."""
+    if hit.get("focus") is None:
+        return hit.get("provider") == "exa"
+    return hit.get("focus") == "web"
 
 
 def _scout(data: dict) -> list[str]:
     hits = data.get("scout_hits") or []
-    web = sum(1 for h in hits if h.get("provider") == "exa")
-    papers = sum(1 for h in hits if h.get("provider") == "elicit")
+    web = sum(1 for h in hits if _is_web(h))
+    papers = sum(1 for h in hits if _is_paper(h))
     return [f"[scout] {web} web · {papers} papers"]
 
 
@@ -67,16 +81,22 @@ def _plan(data: dict) -> list[str]:
     return format_plan(topics, wave=wave)
 
 
+# Display order for the research suffix. ``EXA_SEARCH_KINDS`` drives membership
+# and totals, but a frozenset has no iteration order and this line is pinned.
+_TOOL_DISPLAY_ORDER = (
+    "exa_search",
+    "exa_people_search",
+    "exa_company_search",
+    "exa_publication_search",
+    "exa_highlights",
+    "elicit_search",
+)
+
+
 def _research_tool_suffix(usage: list) -> str:
     counts = tool_counts(usage)
     parts = []
-    for kind in (
-        "exa_search",
-        "exa_people_search",
-        "exa_company_search",
-        "exa_highlights",
-        "elicit_search",
-    ):
+    for kind in _TOOL_DISPLAY_ORDER:
         n = counts.get(kind)
         if n:
             parts.append(f"{n} {kind}")
@@ -91,7 +111,8 @@ def _research(data: dict) -> list[str]:
     n = len(data.get("sources") or [])
     noun = "source" if n == 1 else "sources"
     line = f"[research {topic_id}] {n} {noun}"
-    errors = data.get("errors") or []
+    # Waves repeat a failure verbatim; the count is of distinct failures.
+    errors = set(data.get("errors") or [])
     if errors:
         line += f"  ({len(errors)} error{'s' if len(errors) != 1 else ''})"
     line += _research_tool_suffix(data.get("usage") or [])

@@ -1,7 +1,7 @@
 [project]
 name = "exact"
 version = "0.2.0"
-description = "Open Deep Research agent (Exa + Elicit, LangGraph)"
+description = "Open Deep Research agent (Exa, LangGraph)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,7 +11,7 @@ dependencies = [
   "langchain-anthropic>=0.3.0",
   "langchain-core>=0.3.0",
   "langgraph-checkpoint-sqlite>=2.0.0",
-  "exa-py>=1.2.0",
+  "exa-py>=2.20,<3",
   "httpx>=0.27.0",
   "pydantic>=2.0.0",
   "pydantic-settings>=2.0.0",

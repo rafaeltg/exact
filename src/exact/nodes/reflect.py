@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import ExactState, ReflectDecision
+from exact.models import ExactState, ReflectDecision, render_prior_queries
 from exact.usage import StructuredOutputError, invoke_structured
 
 type ReflectRoute = Literal["plan_topics", "write_report"]
@@ -61,8 +61,10 @@ def _ask(runtime: Runtime, state: ExactState) -> tuple[ReflectDecision, list[dic
                 content=prompts.REFLECT.format(
                     brief=state.get("brief") or {},
                     findings=prompts.findings_block(state.get("findings")),
-                    prior=state.get("prior_queries")
-                    or [t.get("query") for t in (state.get("topics") or [])],
+                    prior=render_prior_queries(
+                        state.get("prior_queries") or (state.get("topics") or [])
+                    )
+                    or "(none)",
                 )
             ),
             HumanMessage(content="Decide whether to continue."),

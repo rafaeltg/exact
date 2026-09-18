@@ -16,8 +16,8 @@ def test_format_plan_lists_topics_before_any_research_line():
         wave=0,
     )
     assert lines[0] == "[plan] wave 0 — 2 topics"
-    assert "  t0_1  GLP-1 outcomes in HFpEF" in lines
-    assert "  t0_2  Safety and discontinuation" in lines
+    assert "  t0_1 [web]  GLP-1 outcomes in HFpEF" in lines
+    assert "  t0_2 [web]  Safety and discontinuation" in lines
     assert not any(line.startswith("[research") for line in lines)
 
 
@@ -62,7 +62,7 @@ def test_format_plan_singular_topic_noun():
         (
             "plan_topics",
             {"topics": [{"id": "t0_1", "query": "define X"}], "iteration": 0},
-            ["[plan] wave 0 — 1 topic", "  t0_1  define X"],
+            ["[plan] wave 0 — 1 topic", "  t0_1 [web]  define X"],
         ),
         (
             "research_agent",
@@ -152,3 +152,34 @@ def test_stream_emits_plan_before_research_agent():
     assert nodes.index("plan_topics") < nodes.index("research_agent")
     assert plan_at < research_at
     assert any(line.strip().startswith("t0_") for line in lines)
+
+
+def test_scout_counts_papers_by_focus():
+    hits = [{"provider": "exa", "focus": "web"} for _ in range(5)]
+    hits += [{"provider": "exa", "focus": "publication"} for _ in range(5)]
+    assert format_update("scout", {"scout_hits": hits}) == ["[scout] 5 web · 5 papers"]
+
+
+def test_scout_counts_a_legacy_elicit_hit_as_a_paper():
+    hits = [{"provider": "exa"}, {"provider": "elicit"}]
+    assert format_update("scout", {"scout_hits": hits}) == ["[scout] 1 web · 1 papers"]
+
+
+def test_research_counts_repeated_errors_once():
+    data = {"errors": ["exa scout failed: boom", "exa scout failed: boom"]}
+    assert "(1 error)" in format_update("research_agent", data)[0]
+
+
+def test_plan_lines_show_focus():
+    topics = [
+        {"id": "t0_1", "query": "trials of X", "focus": "publication"},
+        {"id": "t0_2", "query": "define X", "focus": "web"},
+    ]
+    lines = format_plan(topics, wave=0)
+    assert lines[1] == "  t0_1 [publication]  trials of X"
+    assert lines[2] == "  t0_2 [web]  define X"
+
+
+def test_plan_lines_tag_a_pre_focus_checkpoint_as_web():
+    lines = format_plan([{"id": "t0_1", "query": "define X"}], wave=0)
+    assert lines[1] == "  t0_1 [web]  define X"

@@ -3,10 +3,14 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from exa_py import Exa
 
-from exact.models import Source
+from exact.models import Source, TopicFocus
+
+_DOI_HOSTS = frozenset({"doi.org", "dx.doi.org"})
+_MAX_NAMED_AUTHORS = 3
 
 
 def _now() -> str:
@@ -74,6 +78,31 @@ def _as_dict(value) -> dict:
     return getattr(value, "__dict__", None) or {}
 
 
+class _WireItem:
+    """One ``/search`` result straight off the wire.
+
+    ``sdk.request`` performs no key casing, so a raw result is a camelCase
+    dict. This exposes the same attributes the SDK result object carries, so
+    every reader below works on either shape.
+    """
+
+    def __init__(self, data: dict) -> None:
+        self.title = data.get("title")
+        self.url = data.get("url")
+        self.highlights = data.get("highlights")
+        self.text = data.get("text")
+        self.entities = data.get("entities")
+
+
+def _as_items(payload: Any) -> list[Any]:
+    """Results of an SDK result object or of a raw ``sdk.request`` body."""
+    if isinstance(payload, dict):
+        return [
+            _WireItem(r) for r in payload.get("results") or [] if isinstance(r, dict)
+        ]
+    return list(getattr(payload, "results", None) or [])
+
+
 def _entity_props(item, entity_type: str) -> dict | None:
     for ent in getattr(item, "entities", None) or []:
         data = _as_dict(ent)
@@ -117,6 +146,67 @@ def _format_company(props: dict) -> str:
     return " | ".join(parts)
 
 
+def _author_names(props: dict) -> str:
+    """Author names from the wire shape, which is a list of objects."""
+    names: list[str] = []
+    for author in props.get("authors") or []:
+        name = _as_dict(author).get("name") if not isinstance(author, str) else author
+        if name:
+            names.append(str(name))
+    if len(names) > _MAX_NAMED_AUTHORS:
+        return ", ".join(names[:_MAX_NAMED_AUTHORS]) + " et al."
+    return ", ".join(names)
+
+
+def _format_publication(props: dict) -> str:
+    names = _author_names(props)
+    year = props.get("year")
+    head = (
+        f"{names} ({year})" if names and year is not None else names or str(year or "")
+    )
+    parts = [head] if head else []
+    citations = props.get("citationCount")
+    if citations is not None:
+        parts.append(f"{citations} citations")
+    return ", ".join(parts)
+
+
+_FOCUS_BY_CATEGORY: dict[str, TopicFocus] = {
+    "web": "web",
+    "people": "people",
+    "company": "company",
+    "publication": "publication",
+}
+
+
+def _as_focus(category: str | None) -> TopicFocus:
+    """The lane a search category stamps on its hits.
+
+    Any category reaches the SDK, but only a known lane is a valid focus, so
+    an unrecognized one reads as web rather than failing the whole search.
+    """
+    return _FOCUS_BY_CATEGORY.get(category or "", "web")
+
+
+def _doi_from_url(url: str | None) -> str | None:
+    """The DOI a ``doi.org`` resolver URL carries, else None."""
+    if not url:
+        return None
+    parts = urlsplit(url)
+    if parts.hostname is None or parts.hostname.lower() not in _DOI_HOSTS:
+        return None
+    doi = parts.path.lstrip("/")
+    return doi if doi.startswith("10.") else None
+
+
+def _doi_from(item) -> str | None:
+    props = _entity_props(item, "publication") or {}
+    doi = props.get("doi")
+    if doi:
+        return str(doi)
+    return _doi_from_url(getattr(item, "url", None))
+
+
 def _entity_line(item) -> str:
     person = _entity_props(item, "person")
     if person:
@@ -124,10 +214,16 @@ def _entity_line(item) -> str:
     company = _entity_props(item, "company")
     if company:
         return _format_company(company)
+    publication = _entity_props(item, "publication")
+    if publication:
+        return _format_publication(publication)
     return ""
 
 
 def _item_text(item) -> str:
+    abstract = (_entity_props(item, "publication") or {}).get("abstract")
+    if abstract:
+        return str(abstract)
     highlights = getattr(item, "highlights", None) or []
     if highlights:
         return " ".join(highlights)
@@ -155,6 +251,7 @@ class ExaClient:
     ) -> None:
         self.api_key = api_key
         self.timeout = timeout
+        self.degraded: str | None = None
         self._client = sdk
         self._clock = clock or _now
 
@@ -163,40 +260,85 @@ class ExaClient:
             self._client = Exa(self.api_key)
         return self._client
 
-    def _source(self, i: int, item, fallback_url: str) -> Source:
+    def _source(
+        self, i: int, item, fallback_url: str, focus: TopicFocus | None
+    ) -> Source:
         url = getattr(item, "url", None) or fallback_url or None
         return Source(
             id=f"tmp_{i}",
             title=getattr(item, "title", None) or url or "untitled",
             url=url,
+            # A highlights read carries no lane, so its DOI stays unset too;
+            # the caller backfills both from the source that owns the URL.
+            doi=_doi_from(item) if focus else None,
             snippet=_item_snippet(item),
             provider="exa",
+            focus=focus,
             retrieved_at=self._clock(),
         )
 
-    def _map(self, result, fallback_url: str) -> list[Source]:
-        items = getattr(result, "results", None) or []
-        return [self._source(i, item, fallback_url) for i, item in enumerate(items)]
+    def _map(
+        self, items: list[Any], fallback_url: str, focus: TopicFocus | None
+    ) -> list[Source]:
+        return [self._source(i, it, fallback_url, focus) for i, it in enumerate(items)]
+
+    def _search_contents(self, query: str, num: int, category: str | None):
+        kwargs: dict[str, Any] = {"num_results": num, "highlights": True}
+        if category is not None:
+            kwargs["category"] = category
+        return self._exa().search_and_contents(query, **kwargs)
+
+    def _publication_items(self, query: str, num: int) -> list[Any]:
+        """Publication hits through the raw endpoint, so entities survive.
+
+        exa-py 2.20.0 parses only person and company entities, so the typed
+        `search_and_contents` path drops the publication entity that carries
+        the abstract and the DOI. `request` returns the undecoded wire body.
+        Retire this once exa-py parses publication entities.
+        """
+        sdk = self._exa()
+        if not hasattr(sdk, "request"):
+            items = _as_items(
+                _invoke(
+                    lambda: self._search_contents(query, num, "publication"),
+                    self.timeout,
+                )
+            )
+            # Only after the call returns: a raise is already one error line.
+            self.degraded = (
+                "exa publication search ran without abstracts; "
+                "DOIs only from doi.org urls"
+            )
+            return items
+        # `request` performs no key casing, so the body must be camelCase.
+        body = {
+            "query": query,
+            "numResults": num,
+            "category": "publication",
+            "contents": {"highlights": True},
+        }
+        return _as_items(_invoke(lambda: sdk.request("/search", body), self.timeout))
 
     def search(
         self, query: str, num: int = 5, *, category: str | None = None
     ) -> list[Source]:
-        """Search Exa; optional ``people`` / ``company`` category."""
-
-        def fetch():
-            kwargs: dict[str, Any] = {"num_results": num, "highlights": True}
-            if category in ("people", "company"):
-                kwargs["category"] = category
-            return self._exa().search_and_contents(query, **kwargs)
-
-        return self._map(_invoke(fetch, self.timeout), "")
+        """Search Exa; ``category`` selects the retrieval lane."""
+        if category == "publication":
+            items = self._publication_items(query, num)
+        else:
+            items = _as_items(
+                _invoke(
+                    lambda: self._search_contents(query, num, category), self.timeout
+                )
+            )
+        return self._map(items, "", _as_focus(category))
 
     def highlights(self, url: str) -> list[Source]:
         """Fetch highlight snippets for a known URL."""
         result = _invoke(
             lambda: self._exa().get_contents([url], highlights=True), self.timeout
         )
-        return self._map(result, url)
+        return self._map(_as_items(result), url, None)
 
 
 def dump_sources(sources: list[Source]) -> list[dict[str, Any]]:

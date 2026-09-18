@@ -1,8 +1,8 @@
 # exact
 
-Open Deep Research agent on LangGraph. Tools: **Exa** and **Elicit**. Clarification is grounded in an Exa scout.
+Open Deep Research agent on LangGraph. Tools: **Exa**. Clarification is grounded in an Exa scout that adds a publication lane on an academic signal. The Elicit client stays in the tree but is dormant: no live path binds it. Each planner topic carries a focus lane (`web`, `people`, `company`, `publication`), and a worker binds only the search tool of its lane plus `exa_highlights`.
 
-Architecture: [docs/architecture.md](docs/architecture.md) · Contract: [docs/spec.md](docs/spec.md) v1.2 · [Contributing](CONTRIBUTING.md) · [ODR blog](https://www.langchain.com/blog/open-deep-research)
+Architecture: [docs/architecture.md](docs/architecture.md) · Contract: [docs/spec.md](docs/spec.md) v1.4 · [Contributing](CONTRIBUTING.md) · [ODR blog](https://www.langchain.com/blog/open-deep-research)
 
 ```
 make setup             # uv sync --extra dev + pre-commit hooks

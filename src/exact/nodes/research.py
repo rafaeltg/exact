@@ -10,8 +10,13 @@ from pydantic import BaseModel, Field
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
-from exact.models import ExactState, Finding, ResearchPayload, Source
-from exact.tools.elicit import ElicitClient
+from exact.models import (
+    ExactState,
+    Finding,
+    ResearchPayload,
+    Source,
+    focus_label,
+)
 from exact.tools.exa import ExaClient
 from exact.usage import (
     invoke_structured,
@@ -53,7 +58,7 @@ def _render(sources: list[dict]) -> str:
     lines = []
     for s in sources:
         lines.append(
-            f"[{s.get('id')}] {s.get('title')} ({s.get('provider')}) "
+            f"[{s.get('id')}] {s.get('title')} ({focus_label(s)}) "
             f"{s.get('url') or s.get('doi') or ''}\n{s.get('snippet', '')}"
         )
     return "\n\n".join(lines) or "(none)"
@@ -64,7 +69,7 @@ def _compact_sources(sources: list[dict]) -> str:
     for s in sources:
         snippet = (s.get("snippet") or "")[:240]
         lines.append(
-            f"[{s.get('id')}] {s.get('title')} "
+            f"[{s.get('id')}] {s.get('title')} ({focus_label(s)}) "
             f"{s.get('url') or s.get('doi') or ''}\n{snippet}"
         )
     return "\n\n".join(lines) or "(none)"
@@ -98,12 +103,25 @@ class _Bag:
     def note(self, name: str, args: dict) -> None:
         self.notes.append(_call_note(name, args))
 
+    def _inherit(self, minted: list[dict]) -> None:
+        """A highlights read carries no lane or DOI; the owning source has both."""
+        by_url = {s.get("url"): s for s in self.collected if s.get("url")}
+        for row in minted:
+            if row.get("focus") or row.get("doi"):
+                continue
+            owner = by_url.get(row.get("url"))
+            if owner is None:
+                continue
+            row["focus"] = owner.get("focus")
+            row["doi"] = owner.get("doi")
+
     def ingest(self, found: list[Source]) -> str:
         if found:
             self.saw_hits = True
         fresh = _drop_prior(found, self.prior)
         with self.lock:
             minted = _mint(self.topic_id, fresh, len(self.collected) + 1)
+            self._inherit(minted)
             self.collected.extend(minted)
         return _compact_sources(minted)
 
@@ -120,11 +138,9 @@ class _Bag:
 class _Tools:
     """LangChain tool implementations for one research worker."""
 
-    def __init__(self, bag: _Bag, exa: ExaClient, elicit: ElicitClient, intent: str):
+    def __init__(self, bag: _Bag, exa: ExaClient):
         self.bag = bag
         self.exa = exa
-        self.elicit = elicit
-        self.intent = intent
 
     def exa_search(self, query: str) -> str:
         """Search the web with Exa."""
@@ -159,47 +175,40 @@ class _Tools:
         self.bag.note("exa_highlights", {"url": url})
         return self.bag.call("exa_highlights", lambda: self.exa.highlights(url))
 
-    def elicit_search(self, query: str) -> str:
-        """Search academic papers with Elicit."""
-        self.bag.note("elicit_search", {"query": query})
-        allowed = self.intent in ("academic", "mixed") and self.elicit.enabled
-        if not allowed:
-            return "elicit_search disabled (no key or non-academic brief)."
+    def exa_publication_search(self, query: str) -> str:
+        """Search academic publications with Exa."""
+        self.bag.note("exa_publication_search", {"query": query})
         return self.bag.call(
-            "elicit_search",
-            lambda: self.elicit.search(query, num=self.bag.max_hits),
+            "exa_publication_search",
+            lambda: self.exa.search(
+                query, num=self.bag.max_hits, category="publication"
+            ),
         )
 
-    def as_list(self) -> list[StructuredTool]:
+    def as_list(self, focus: str | None) -> list[StructuredTool]:
+        """The search tool of this topic's lane, plus the highlights reader."""
+        searches = {
+            "web": (self.exa_search, "exa_search"),
+            "people": (self.exa_people_search, "exa_people_search"),
+            "company": (self.exa_company_search, "exa_company_search"),
+            "publication": (self.exa_publication_search, "exa_publication_search"),
+        }
+        fn, name = searches.get(focus or "web", searches["web"])
         return [
-            StructuredTool.from_function(
-                self.exa_search, name="exa_search", args_schema=SearchArgs
-            ),
-            StructuredTool.from_function(
-                self.exa_people_search,
-                name="exa_people_search",
-                args_schema=SearchArgs,
-            ),
-            StructuredTool.from_function(
-                self.exa_company_search,
-                name="exa_company_search",
-                args_schema=SearchArgs,
-            ),
+            StructuredTool.from_function(fn, name=name, args_schema=SearchArgs),
             StructuredTool.from_function(
                 self.exa_highlights, name="exa_highlights", args_schema=HighlightsArgs
-            ),
-            StructuredTool.from_function(
-                self.elicit_search, name="elicit_search", args_schema=SearchArgs
             ),
         ]
 
 
-def _gap_kind(bag: _Bag) -> str:
+def _gap_kind(bag: _Bag, focus: str) -> str:
+    """Why a lane returned nothing; the lane names itself so waves stay apart."""
     if bag.errors:
-        return "retrieval failed"
+        return f"lane {focus}: retrieval failed"
     if bag.saw_hits:
-        return "no new sources"
-    return "no sources"
+        return f"lane {focus}: no new sources"
+    return f"lane {focus}: no sources"
 
 
 def _empty_finding(
@@ -255,13 +264,16 @@ def _prune(
     }
 
 
-def _clients(runtime: Runtime, settings) -> tuple[ExaClient, ElicitClient]:
+def _with_degraded(out: ExactState, exa: ExaClient) -> ExactState:
+    """A degraded capability is an error line, not a retrieval gap."""
+    if exa.degraded:
+        out["errors"] = [*(out.get("errors") or []), exa.degraded]
+    return out
+
+
+def _client(runtime: Runtime, settings) -> ExaClient:
     extras = runtime.extras
-    exa = extras.get("exa") or ExaClient(settings.exa_api_key, settings.http_timeout)
-    elicit = extras.get("elicit") or ElicitClient(
-        settings.elicit_api_key, settings.http_timeout
-    )
-    return exa, elicit
+    return extras.get("exa") or ExaClient(settings.exa_api_key, settings.http_timeout)
 
 
 def _begin_tool_session(model) -> None:
@@ -277,16 +289,21 @@ def _agent_messages(result) -> list:
     return []
 
 
-def _run_agent(runtime: Runtime, tools: _Tools, query: str, brief: dict, prior) -> list:
+def _run_agent(
+    runtime: Runtime, tools: _Tools, topic: dict, brief: dict, prior
+) -> list:
     settings = runtime.settings
     model = runtime.model("research")
     model_id = role_model_id(settings, "research")
+    query = topic.get("query") or ""
+    focus = topic.get("focus") or "web"
     _begin_tool_session(model)
     agent = create_agent(
         model=model,
-        tools=tools.as_list(),
+        tools=tools.as_list(focus),
         system_prompt=prompts.RESEARCH_SYS.format(
             topic=query,
+            focus=focus,
             must_cover=brief.get("must_cover") or [],
             prior=prior or "(none)",
         ),
@@ -318,15 +335,20 @@ def research_agent(state: ResearchPayload, runtime: Runtime) -> ExactState:
     topic = state["topic"]
     brief = state.get("brief") or {}
     topic_id = topic.get("id") or "t"
-    query = topic.get("query") or ""
     bag = _Bag(topic_id, state.get("prior_titles") or [], settings.max_hits)
-    exa, elicit = _clients(runtime, settings)
-    tools = _Tools(bag, exa, elicit, brief.get("intent") or "web")
-    loop_usage = _run_agent(runtime, tools, query, brief, bag.prior)
+    exa = _client(runtime, settings)
+    tools = _Tools(bag, exa)
+    loop_usage = _run_agent(runtime, tools, topic, brief, bag.prior)
     if not bag.collected:
-        return _empty_finding(
-            topic_id, bag.errors, _gap_kind(bag), loop_usage + bag.usage
+        return _with_degraded(
+            _empty_finding(
+                topic_id,
+                bag.errors,
+                _gap_kind(bag, topic.get("focus") or "web"),
+                loop_usage + bag.usage,
+            ),
+            exa,
         )
     out = _prune(runtime, topic_id, brief, bag.collected, bag.notes, bag.errors)
     out["usage"] = loop_usage + bag.usage + list(out.get("usage") or [])
-    return out
+    return _with_degraded(out, exa)

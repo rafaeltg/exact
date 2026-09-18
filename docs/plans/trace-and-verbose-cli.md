@@ -278,8 +278,8 @@ argument.
     prior-title dedupe) and the minted titles with their URLs; today `ingest` returns only
     a compacted string, so it gains a structured return beside it.
   - **`_Tools`** owns the two attempts that never reach `call`: `exa_highlights` returns
-    its refusal before `note`, and `elicit_search` calls `note` then returns when the
-    intent is non-academic or the key is absent. Each emits its own event.
+    its refusal before `note`, and `exa_publication_search` calls `note` then returns when
+    the intent is non-academic. Each emits its own event.
 
   A pre/post pair around `note` / `call` would both invent and drop events here, and the
   obvious post-hook would write snippet bodies. `_Bag.ingest` alone cannot carry the event:

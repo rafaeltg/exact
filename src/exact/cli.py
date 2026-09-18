@@ -101,7 +101,8 @@ def _print_report(result: dict) -> None:
     errors = result.get("errors") or []
     if errors:
         print("\n## Errors")
-        for err in errors:
+        # Waves repeat a failure verbatim; report each distinct one once.
+        for err in dict.fromkeys(errors):
             print(f"- {err}")
     for line in format_usage(result.get("usage") or []):
         print(line)

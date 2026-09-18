@@ -14,6 +14,7 @@ from exact.models import (
     ExactState,
     JsonMapping,
     UserClarification,
+    focus_label,
 )
 from exact.usage import StructuredOutputError, invoke_structured
 
@@ -27,7 +28,7 @@ def _scout_block(hits: list[dict]) -> str:
     lines = []
     for h in hits[:8]:
         lines.append(
-            f"- {h.get('title')} [{h.get('provider')}] {h.get('snippet', '')[:200]}"
+            f"- {h.get('title')} [{focus_label(h)}] {h.get('snippet', '')[:200]}"
         )
     return "\n".join(lines)
 
