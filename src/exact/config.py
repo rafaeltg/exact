@@ -11,6 +11,8 @@ from langchain.chat_models import init_chat_model
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from exact.trace import NullTracer, Tracer
+
 type Role = Literal["router", "research", "compress", "write"]
 type Effort = Literal["normal", "max"]
 
@@ -105,6 +107,8 @@ class Settings(BaseSettings):
     exact_reasoning_effort: str = "none"
     exact_thinking_budget: int = 0
     exact_db: str = "exact.sqlite"
+    exact_trace: bool = False
+    exact_trace_path: str = ""
     exact_effort: Effort = "normal"
     max_iterations: int = 3
     max_clarify_turns: int = 3
@@ -244,6 +248,7 @@ class Runtime:
     settings: Settings
     llm: Any
     extras: dict[str, Any] = field(default_factory=dict)
+    tracer: Tracer = field(default_factory=NullTracer)
 
     def model(self, role: Role) -> Any:
         """Return the per-role chat model, or ``llm`` when unset."""

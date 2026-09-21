@@ -224,5 +224,8 @@ __marimo__/
 *.sqlite
 *.sqlite-*
 
+# exact trace sidecars
+traces/
+
 # Claude Code working artifacts (plans, review reports) — not part of the repo
 .claude/artifacts/

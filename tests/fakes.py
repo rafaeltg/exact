@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
+from pathlib import Path
 
 from langchain_core.messages import AIMessage
 
@@ -14,6 +16,7 @@ from exact.models import (
     ResearchBrief,
     Source,
 )
+from exact.trace import NullTracer, Tracer
 
 _SCHEMA_ATTR = {
     ClarifyDecision: "clarify",
@@ -316,12 +319,46 @@ class FakeElicit:
         return list(self._hits)
 
 
+def read_trace(path: Path) -> list[dict]:
+    """Parse one sidecar file into its envelope objects."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+class RecordingTracer(Tracer):
+    """The ``Tracer`` fake: it keeps every emit instead of writing a file."""
+
+    def __init__(self) -> None:
+        self.run_id = "fake"
+        self.dropped = 0
+        self.events: list[tuple[str, dict]] = []
+        self.closed = False
+
+    def emit(self, kind: str, data: dict) -> None:
+        self.events.append((kind, data))
+
+    def record_drop(self, exc: Exception) -> None:
+        self.dropped += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+    def kinds(self) -> list[str]:
+        """The kind of each recorded event, in emit order."""
+        return [kind for kind, _ in self.events]
+
+    def payloads(self, kind: str) -> list[dict]:
+        """Every payload recorded under ``kind``, in emit order."""
+        return [data for recorded, data in self.events if recorded == kind]
+
+
 def runtime(
     *,
     llm: FakeLLM | None = None,
     exa: FakeExa | None = None,
     elicit: FakeElicit | None = None,
     llms: dict | None = None,
+    tracer: Tracer | None = None,
     **setting_kwargs,
 ) -> Runtime:
     settings = dict(exa_api_key="test", openai_api_key="test")
@@ -334,6 +371,7 @@ def runtime(
         settings=Settings(_env_file=None, **settings),
         llm=primary,
         extras=extras,
+        tracer=tracer or NullTracer(),
     )
 
 
