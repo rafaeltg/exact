@@ -26,7 +26,12 @@ def test_pi_settings_preserve_model_and_load_shared_skills() -> None:
     settings = json.loads((ROOT / ".pi/settings.json").read_text(encoding="utf-8"))
     assert settings["defaultProvider"] == "openrouter"
     assert settings["defaultModel"] == "openai/gpt-5.6-luna-pro"
-    assert settings["skills"] == ["../.claude/skills"]
+    assert settings["skills"] == [
+        "../.claude/skills/phase-slicing",
+        "../.claude/skills/task-structuring",
+        "../.claude/skills/python-quality",
+        "../.claude/skills/test-design",
+    ]
 
 
 def test_pi_prompt_templates_have_unique_names_and_arguments() -> None:
