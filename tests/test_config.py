@@ -49,34 +49,16 @@ def _settings(**kwargs) -> Settings:
         exact_max_tokens_research=1024,
         exact_max_tokens_compress=2048,
         exact_max_tokens_write=8192,
-        exact_reasoning_effort="none",
         exact_thinking_budget=0,
     )
     base.update(kwargs)
     return Settings(**base)
 
 
-def test_chat_kwargs_gpt5_sets_reasoning_effort_from_settings():
-    settings = _settings()
-    kwargs = chat_kwargs(settings, "openai:gpt-5.6-luna", "research")
-    assert kwargs["temperature"] == 0.0
-    assert kwargs["reasoning_effort"] == "none"
-    assert kwargs["max_tokens"] == 1024
-
-
-def test_chat_kwargs_gpt4_omits_reasoning_effort():
-    settings = _settings(exact_max_tokens_write=8192)
-    kwargs = chat_kwargs(settings, "openai:gpt-4.1-mini", "write")
-    assert kwargs["temperature"] == 0.0
-    assert "reasoning_effort" not in kwargs
-    assert kwargs["max_tokens"] == 8192
-
-
-def test_chat_kwargs_anthropic_omits_reasoning_effort_when_budget_zero():
+def test_chat_kwargs_anthropic_omits_thinking_when_budget_zero():
     settings = _settings()
     kwargs = chat_kwargs(settings, "anthropic:claude-haiku-4-5", "compress")
     assert kwargs["temperature"] == 0.0
-    assert "reasoning_effort" not in kwargs
     assert "thinking" not in kwargs
     assert kwargs["max_tokens"] == 2048
 
@@ -102,7 +84,7 @@ def test_chat_kwargs_thinking_lifts_max_tokens_above_the_budget():
 
 def test_chat_kwargs_thinking_budget_leaves_non_anthropic_temperature_alone():
     settings = _settings(exact_temperature=0.0, exact_thinking_budget=1024)
-    kwargs = chat_kwargs(settings, "openai:gpt-5.1", "router")
+    kwargs = chat_kwargs(settings, "other:model-x", "router")
     assert kwargs["temperature"] == 0.0
     assert "thinking" not in kwargs
 
@@ -137,13 +119,11 @@ def test_role_max_tokens_reads_settings():
 def test_api_keys_are_hidden_from_settings_repr():
     settings = _settings(
         exa_api_key="exa-secret",
-        openai_api_key="openai-secret",
         anthropic_api_key="anthropic-secret",
         elicit_api_key="elicit-secret",
     )
     text = repr(settings)
     assert "exa-secret" not in text
-    assert "openai-secret" not in text
     assert "anthropic-secret" not in text
     assert "elicit-secret" not in text
 
@@ -192,10 +172,9 @@ def test_from_env_builds_the_role_llms_from_the_given_settings(monkeypatch):
         return dict.fromkeys(ROLES, FakeLLM())
 
     monkeypatch.setattr("exact.config._build_role_llms", recorder)
-    monkeypatch.setenv("OPENAI_API_KEY", "k")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     settings = Settings(
-        _env_file=None, exact_effort="max", exa_api_key="k", openai_api_key="k"
+        _env_file=None, exact_effort="max", exa_api_key="k", anthropic_api_key="k"
     )
     Runtime.from_env(settings)
     assert seen[0] is settings

@@ -4,7 +4,7 @@
         complexity-check complexity-pre complexity-post \
         spec-check spec-check-ready spec-check-index spec-check-all \
         plan-check imports-check \
-        workflows-check \
+        workflows-check pi-test \
         check clean
 
 .SHELLFLAGS := -eu -o pipefail -c
@@ -229,6 +229,11 @@ test-failed: ## Re-run only previously failed tests
 	$(AT)printf '==> test-failed\n' >&2
 	$(AT)$(PYTEST) tests --lf $(PYTEST_ARGS)
 
+pi-test: ## Run focused Pi resource and extension tests
+	$(AT)printf '==> pi-test\n' >&2
+	$(AT)$(PYTEST) tests/test_pi_resources.py -k 'test_pi_github_workflow_'
+	$(AT)node --experimental-strip-types --test tests/test_pi_extension.mjs
+
 # ─── Aggregate gate (AGENTS.md "Done when") ────────────────────────────
 check: ## Lint, format-check, complexity, imports, workflow scripts, tests
 	$(AT)printf '==> check\n' >&2
@@ -238,6 +243,7 @@ check: ## Lint, format-check, complexity, imports, workflow scripts, tests
 	@$(MAKE) complexity-check
 	@$(MAKE) imports-check
 	@$(MAKE) workflows-check
+	@$(MAKE) pi-test
 	@$(MAKE) test
 
 # ─── Cleanup ───────────────────────────────────────────────────────────

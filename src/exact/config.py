@@ -91,7 +91,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     exa_api_key: str = Field(default="", repr=False)
-    openai_api_key: str = Field(default="", repr=False)
     anthropic_api_key: str = Field(default="", repr=False)
     elicit_api_key: str = Field(default="", repr=False)
     exact_model: str = "anthropic:claude-haiku-4-5"
@@ -104,7 +103,6 @@ class Settings(BaseSettings):
     exact_max_tokens_research: int = 1024
     exact_max_tokens_compress: int = 2048
     exact_max_tokens_write: int = 8192
-    exact_reasoning_effort: str = "none"
     exact_thinking_budget: int = 0
     exact_db: str = "exact.sqlite"
     exact_trace: bool = False
@@ -142,12 +140,6 @@ def _model_leaf(model: str) -> str:
     return model.split(":", 1)[-1].lower()
 
 
-def uses_reasoning_effort(model: str) -> bool:
-    """True for GPT-5/6 ids that accept ``reasoning_effort``."""
-    leaf = _model_leaf(model)
-    return leaf.startswith("gpt-5") or leaf.startswith("gpt-6")
-
-
 def is_anthropic_model(model: str) -> bool:
     """True for ``anthropic:`` prefixes or Claude leaf ids."""
     if model.startswith("anthropic:"):
@@ -173,10 +165,6 @@ def chat_kwargs(
         "temperature": settings.exact_temperature,
         "max_tokens": role_max_tokens(settings, role),
     }
-    if uses_reasoning_effort(model):
-        effort = (settings.exact_reasoning_effort or "").strip()
-        if effort:
-            kwargs["reasoning_effort"] = effort
     if settings.exact_thinking_budget > 0 and is_anthropic_model(model):
         # Anthropic rejects any temperature but 1 while thinking is on, and
         # requires max_tokens above budget_tokens: the budget buys thinking,
@@ -193,7 +181,7 @@ def chat_kwargs(
 
 
 def _build_role_llms(settings: Settings) -> dict[str, Any]:
-    cache: dict[tuple[str, int, float, str, int], Any] = {}
+    cache: dict[tuple[str, int, float, int], Any] = {}
     llms: dict[str, Any] = {}
     for role in ROLES:
         model_id = role_model_id(settings, role)
@@ -202,7 +190,6 @@ def _build_role_llms(settings: Settings) -> dict[str, Any]:
             model_id,
             max_tokens,
             settings.exact_temperature,
-            settings.exact_reasoning_effort,
             settings.exact_thinking_budget,
         )
         if key not in cache:
@@ -237,8 +224,8 @@ def require_live_keys(settings: Settings) -> None:
     """Exit the process when required live API keys are missing."""
     if not settings.exa_api_key:
         raise SystemExit("EXA_API_KEY is required")
-    if not settings.openai_api_key and not settings.anthropic_api_key:
-        raise SystemExit("OPENAI_API_KEY or ANTHROPIC_API_KEY is required")
+    if not settings.anthropic_api_key:
+        raise SystemExit("ANTHROPIC_API_KEY is required")
 
 
 @dataclass
@@ -260,7 +247,6 @@ class Runtime:
         if settings is None:
             settings = get_settings()
         require_live_keys(settings)
-        os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
         os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
         llms = _build_role_llms(settings)
         return cls(settings=settings, llm=llms["research"], extras={"llms": llms})

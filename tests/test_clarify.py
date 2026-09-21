@@ -452,7 +452,6 @@ def test_bounds_defaults_match_spec():
     assert fields["exact_max_tokens_research"].default == 1024
     assert fields["exact_max_tokens_compress"].default == 2048
     assert fields["exact_max_tokens_write"].default == 8192
-    assert fields["exact_reasoning_effort"].default == "none"
     assert fields["exact_thinking_budget"].default == 0
     assert fields["max_clarify_turns"].default == 3
     assert fields["max_iterations"].default == 3

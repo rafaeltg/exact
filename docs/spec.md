@@ -276,10 +276,9 @@ Parent `messages` stay clarify-only. Research tool transcripts are never written
 | Role map | router: `decide_clarify`, `plan_topics`, `reflect`. research: tool loop. compress: `generate_brief`, prune. write: `write_report`. |
 | Temperature | `EXACT_TEMPERATURE` (default `0`) |
 | Output caps | `EXACT_MAX_TOKENS_ROUTER` / `_RESEARCH` / `_COMPRESS` / `_WRITE` (defaults 1024 / 1024 / 2048 / 8192) |
-| Reasoning | `EXACT_REASONING_EFFORT` (default `none`; applied only to GPT-5/6 model ids) |
 | Thinking | `EXACT_THINKING_BUDGET` (default `0` = off; Anthropic only when > 0). When on, the request uses `temperature=1` and `max_tokens = budget + role cap`, because Anthropic rejects other temperatures and needs a reply budget above the thinking budget. Anthropic's own minimum is 1024. Thinking also stops Anthropic forcing a tool call, so a router that answers in prose raises `StructuredOutputError` and that node takes its skip or fallback path. |
 | Effort | `EXACT_EFFORT` (default `normal`; `normal` or `max`, exact lowercase). It selects one profile row: `max_iterations` 3 / 4, `max_clarify_turns` 3 / 3, `max_tool_rounds` 4 / 6, `max_hits` 5 / 8, `max_topics_first_wave` 3 / 4, `max_topics_followup` 2 / 3, `max_concurrency` 3 / 4. `MAX_ITERATIONS`, `MAX_CLARIFY_TURNS`, `MAX_TOOL_ROUNDS` and `MAX_HITS` override the profile value when the shell or `.env` sets them; no clamp applies to an explicit value. The other three knobs have no env name. Measured 2026-09-18: `max` spent 0.70× the `total` of `normal` on the calibration query, but the two runs ran a different number of waves, so the figure does not isolate the profile (`git show 3fae7b8:docs/plans/effort-levels.md`, § 12). |
-| Keys | `EXA_API_KEY` required; `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; `ELICIT_API_KEY` optional |
+| Keys | `EXA_API_KEY` and `ANTHROPIC_API_KEY` required; `ELICIT_API_KEY` optional |
 | Checkpointer | SQLite `exact.sqlite` |
 | Concurrency | `max_concurrency` is a top-level `RunnableConfig` key set from the profile (3 normal, 4 max), not a `configurable` entry. It is process-scoped: a resume follows the current shell, not the checkpoint. |
 | HTTP | 20s, 1 retry on timeout, 429, or 5xx. Exa has no SDK cancel; on soft timeout Exact reaps the worker thread before retry so calls do not overlap. |

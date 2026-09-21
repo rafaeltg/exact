@@ -255,7 +255,7 @@ excludes a dangling id by construction: it names no source, so no crumb can hold
   feeds the `effort=` echo line, so thread-scoped caps come from the checkpoint on a
   resume and process-scoped caps from the current `Settings`.
 - `models` (per role: `router`, `research`, `compress`, `write`, each the resolved id),
-  `max_tokens` (per role), `temperature`, `reasoning_effort`, `thinking_budget`. These
+  `max_tokens` (per role), `temperature`, `thinking_budget`. These
   are the **configured** `Settings` values, not the effective request kwargs:
   `chat_kwargs` rewrites `temperature` and `max_tokens` when thinking is on, and
   `thinking_budget` in the same snapshot tells the reader that it did. Question 2 of §1

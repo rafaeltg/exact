@@ -361,7 +361,7 @@ def runtime(
     tracer: Tracer | None = None,
     **setting_kwargs,
 ) -> Runtime:
-    settings = dict(exa_api_key="test", openai_api_key="test")
+    settings = dict(exa_api_key="test", anthropic_api_key="test")
     settings.update(setting_kwargs)
     primary = llm or FakeLLM()
     extras: dict = {"exa": exa or FakeExa(), "elicit": elicit or FakeElicit()}
