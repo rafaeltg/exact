@@ -8,6 +8,7 @@ tracer through ``Runtime``.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import uuid
@@ -20,6 +21,9 @@ ENVELOPE_VERSION = 1
 
 # One cap for every error text the sidecar carries, with no marker.
 ERROR_TEXT_MAX = 500
+
+# The ``t{wave}_{i}`` grammar of a research topic id.
+_TOPIC_ID = re.compile(r"t(\d+)_\d+")
 
 
 def clip_error(text: str) -> str:
@@ -39,6 +43,16 @@ def crumb(row: dict) -> dict:
         "url": row.get("url"),
         "doi": row.get("doi"),
     }
+
+
+def wave_of(topic_id: str | None) -> int | None:
+    """The wave a research topic id names; ``None`` for any other id.
+
+    The topic id grammar is no contract for a trace reader, so every line that
+    names a topic carries this value beside it.
+    """
+    match = _TOPIC_ID.fullmatch(topic_id or "")
+    return int(match.group(1)) if match else None
 
 
 class Tracer(Protocol):
@@ -78,7 +92,11 @@ class NullTracer(Tracer):
 
 
 class JsonlTracer(Tracer):
-    """Append one UTF-8 JSONL envelope per emit, then flush."""
+    """Append one UTF-8 JSONL envelope per emit, with no write buffer.
+
+    Each line is one unbuffered write, so a failed write leaves no bytes for a
+    later write or ``close`` to flush.
+    """
 
     def __init__(self, path: Path, thread_id: str):
         self.run_id = str(uuid.uuid4())
@@ -86,7 +104,7 @@ class JsonlTracer(Tracer):
         self._thread_id = thread_id
         self._seq = 0
         self._closed = False
-        self._handle = path.open("a", encoding="utf-8")
+        self._handle = path.open("ab", buffering=0)
         # Reentrant: a write failure calls ``record_drop`` while ``emit``
         # still holds the lock, and both guard the same state.
         self._lock = threading.RLock()
@@ -102,20 +120,26 @@ class JsonlTracer(Tracer):
             "data": data,
         }
 
+    def _write_all(self, payload: bytes) -> None:
+        # A raw write may be short; loop so one envelope is never left cut.
+        view = memoryview(payload)
+        while view:
+            view = view[self._handle.write(view) :]
+
     @override
     def emit(self, kind: str, data: dict) -> None:
         with self._lock:
             if self._closed:
                 return
-            self._seq += 1
+            seq = self._seq + 1
             try:
-                line = json.dumps(
-                    self._envelope(kind, data, self._seq), ensure_ascii=False
-                )
-                self._handle.write(line + "\n")
-                self._handle.flush()
+                line = json.dumps(self._envelope(kind, data, seq), ensure_ascii=False)
+                self._write_all((line + "\n").encode("utf-8"))
             except Exception as exc:  # noqa: BLE001
                 self.record_drop(exc)
+                return
+            # A dropped event takes no number, so ``seq`` counts written lines.
+            self._seq = seq
 
     @override
     def record_drop(self, exc: Exception) -> None:
@@ -133,4 +157,9 @@ class JsonlTracer(Tracer):
     def close(self) -> None:
         with self._lock:
             self._closed = True
-            self._handle.close()
+            try:
+                self._handle.close()
+            except OSError as exc:
+                # Called from the CLI ``finally``: a raise would hide the run's
+                # own outcome.
+                self.record_drop(exc)

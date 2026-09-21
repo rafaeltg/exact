@@ -201,3 +201,115 @@ def test_format_effort_renders_every_resolved_cap():
     assert line == (
         "effort=max waves=4 topics=4/3 rounds=6 hits=8 clarify=3 concurrency=4"
     )
+
+
+_BRIEF = {
+    "brief": {"intent": "web", "must_cover": ["define X", "cost"], "question": "Q?"}
+}
+_RESEARCH = {
+    "findings": [{"topic_id": "t0_1", "gaps": ["no safety data"]}],
+    "sources": [{"id": "src_t0_1_1"}],
+    "errors": ["exa_search: down", "exa_search: down", "prune: bad"],
+    "usage": [],
+}
+_REFLECT = {"continue_research": False, "uncovered": ["dose", "cost"]}
+_AUDIT = {"uncovered": ["dose", "dangling:src_x", "dangling:src_y"]}
+
+
+@pytest.mark.parametrize(
+    "node, update, expected",
+    [
+        (
+            "generate_brief",
+            _BRIEF,
+            [
+                "[brief] intent=web  must_cover=2",
+                "  Q?",
+                "  - define X",
+                "  - cost",
+            ],
+        ),
+        (
+            "research_agent",
+            _RESEARCH,
+            [
+                "[research t0_1] 1 source  (2 errors)",
+                "  gap: no safety data",
+                "  error: exa_search: down",
+                "  error: prune: bad",
+            ],
+        ),
+        (
+            "reflect",
+            _REFLECT,
+            ["[reflect] write", "  uncovered: dose", "  uncovered: cost"],
+        ),
+        (
+            "audit_citations",
+            _AUDIT,
+            [
+                "[audit] 2 unresolved citations",
+                "  dangling: src_x",
+                "  dangling: src_y",
+            ],
+        ),
+    ],
+)
+def test_verbose_adds_detail_lines_under_the_default_lines(
+    node: str, update: dict, expected: list[str]
+):
+    assert format_update(node, update, verbose=True) == expected
+
+
+@pytest.mark.parametrize(
+    "node, update",
+    [
+        ("generate_brief", _BRIEF),
+        ("research_agent", _RESEARCH),
+        ("reflect", _REFLECT),
+        ("audit_citations", _AUDIT),
+    ],
+)
+def test_the_default_lines_stay_byte_identical_under_verbose(node: str, update: dict):
+    default = format_update(node, update)
+    verbose = format_update(node, update, verbose=True)
+    assert verbose[: len(default)] == default
+    assert all(line.startswith("  ") for line in verbose[len(default) :])
+
+
+@pytest.mark.parametrize(
+    "node, update",
+    [
+        ("scout", {"scout_hits": [{"provider": "exa", "focus": "web"}]}),
+        ("decide_clarify", {"clarify_needed": True}),
+        ("ask_user", {"user_clarification": {"kind": "skip"}}),
+        ("plan_topics", {"topics": [{"id": "t0_1", "query": "q"}], "iteration": 0}),
+        ("write_report", {"final_report": "X [src_t0_1_1]."}),
+    ],
+)
+def test_scout_clarify_plan_and_write_print_the_same_lines_under_verbose(
+    node: str, update: dict
+):
+    assert format_update(node, update, verbose=True) == format_update(node, update)
+
+
+@pytest.mark.parametrize(
+    "node, update",
+    [
+        ("generate_brief", {"brief": {"intent": "web", "must_cover": []}}),
+        ("research_agent", {"findings": [{"topic_id": "t0_1", "gaps": []}]}),
+        ("reflect", {"continue_research": False, "uncovered": []}),
+        ("audit_citations", {"uncovered": ["dose"]}),
+    ],
+)
+def test_an_empty_list_adds_no_detail_line(node: str, update: dict):
+    assert format_update(node, update, verbose=True) == format_update(node, update)
+
+
+def test_a_repeated_error_appears_once_under_verbose():
+    lines = format_update(
+        "research_agent",
+        {"findings": [{"topic_id": "t0_1"}], "errors": ["boom", "boom"]},
+        verbose=True,
+    )
+    assert lines.count("  error: boom") == 1

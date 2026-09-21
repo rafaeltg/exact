@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 from pydantic import ValidationError
 
@@ -12,7 +14,8 @@ from exact.config import (
     role_max_tokens,
     role_model_id,
 )
-from tests.fakes import FakeLLM
+from exact.trace import NullTracer
+from tests.fakes import FakeLLM, RecordingTracer
 
 _KNOB_ENV_NAMES = (
     "EXACT_EFFORT",
@@ -204,3 +207,31 @@ def test_an_empty_state_takes_every_snapshot_value_from_settings():
         "max_hits": 8,
         "max_concurrency": 4,
     }
+
+
+def test_trace_and_verbose_default_to_off_and_an_empty_path():
+    settings = Settings(_env_file=None)
+    assert settings.exact_trace is False
+    assert settings.exact_trace_path == ""
+    assert settings.exact_verbose is False
+
+
+@pytest.mark.parametrize(
+    "name, field", [("EXACT_TRACE", "exact_trace"), ("EXACT_VERBOSE", "exact_verbose")]
+)
+def test_a_boolean_knob_env_of_1_reads_as_true(monkeypatch, name: str, field: str):
+    monkeypatch.setenv(name, "1")
+    assert getattr(Settings(_env_file=None), field) is True
+
+
+def test_a_fresh_runtime_carries_a_null_tracer():
+    rt = Runtime(settings=Settings(_env_file=None), llm=FakeLLM())
+    assert isinstance(rt.tracer, NullTracer)
+
+
+def test_replacing_the_tracer_leaves_the_original_runtime_alone():
+    rt = Runtime(settings=Settings(_env_file=None), llm=FakeLLM())
+    original = rt.tracer
+    copy = dataclasses.replace(rt, tracer=RecordingTracer())
+    assert rt.tracer is original
+    assert isinstance(copy.tracer, RecordingTracer)

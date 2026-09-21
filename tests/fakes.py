@@ -84,6 +84,9 @@ class FakeStructured:
             parsed = obj[min(self.invocations - 1, len(obj) - 1)]
         else:
             parsed = obj
+        # A real model parses a fresh object per call; parallel workers must
+        # not share one that a node then edits.
+        parsed = parsed.model_copy(deep=True)
         if not self.include_raw:
             return parsed
         return {
@@ -107,6 +110,14 @@ def _usage_meta(meta: dict | None) -> dict | None:
     return out
 
 
+def _topic_query(messages) -> str:
+    for message in messages:
+        content = getattr(message, "content", "")
+        if isinstance(content, str) and content.startswith("Research: "):
+            return content.removeprefix("Research: ")
+    return ""
+
+
 class FakeBound:
     """Bound research model for create_agent.
 
@@ -125,6 +136,7 @@ class FakeBound:
         tool_args: dict | None = None,
         max_calls: int = 1,
         script: list[tuple[str, dict]] | None = None,
+        echo_topic: bool = False,
     ):
         self.owner = owner
         self.tools = tools
@@ -132,11 +144,18 @@ class FakeBound:
         self.tool_args = tool_args or {"query": "test"}
         self.script = script or []
         self.max_calls = len(self.script) or max_calls
+        self.echo_topic = echo_topic
 
-    def _step(self, round_no: int) -> tuple[str, dict]:
-        """One (tool name, args) pair per round; ``script`` wins when set."""
+    def _step(self, round_no: int, messages) -> tuple[str, dict]:
+        """One (tool name, args) pair per round; ``script`` wins when set.
+
+        ``echo_topic`` searches the worker's own topic query, so parallel
+        workers stay apart.
+        """
         if self.script:
             return self.script[round_no - 1]
+        if self.echo_topic:
+            return self.tool_name, {"query": _topic_query(messages)}
         return self.tool_name, self.tool_args
 
     @property
@@ -149,7 +168,7 @@ class FakeBound:
         self.owner.last_tool_loop_messages = list(messages)
         meta = _usage_meta(self.owner.tool_usage_metadata)
         if local.calls <= self.max_calls:
-            name, args = self._step(local.calls)
+            name, args = self._step(local.calls, messages)
             return AIMessage(
                 content="",
                 usage_metadata=meta,
@@ -182,6 +201,7 @@ class FakeLLM:
         usage_metadata: dict | None = None,
         tool_usage_metadata: dict | None = None,
         fail_structured: bool = False,
+        echo_topic: bool = False,
     ):
         self.clarify = clarify or ClarifyDecision(needed=False, question="", options=[])
         self.brief = brief or ResearchBrief(
@@ -206,6 +226,7 @@ class FakeLLM:
         self.usage_metadata = usage_metadata
         self.tool_usage_metadata = tool_usage_metadata
         self.fail_structured = fail_structured
+        self.echo_topic = echo_topic
         self.bound: FakeBound | None = None
         self._structured: dict = {}
         self._local = threading.local()
@@ -233,6 +254,7 @@ class FakeLLM:
             tool_args=self.tool_args,
             max_calls=self.tool_rounds,
             script=self.tool_script,
+            echo_topic=self.echo_topic,
         )
         return self.bound
 
@@ -249,9 +271,12 @@ class FakeExa:
         hits: list[Source] | None = None,
         error: Exception | None = None,
         delay: float = 0.0,
+        failing: dict[str | None, Exception] | None = None,
     ):
         self._hits = hits
         self._error = error
+        # Keyed by search query or by category: one lane or one topic fails.
+        self._failing = failing or {}
         self.delay = delay
         self.active = 0
         self.peak = 0
@@ -278,6 +303,9 @@ class FakeExa:
             self._leave()
         self.search_nums.append(num)
         self.search_categories.append(category)
+        for key in (query, category):
+            if key in self._failing:
+                raise self._failing[key]
         return [
             h.model_copy(update={"focus": category or "web"}) for h in self._results()
         ]

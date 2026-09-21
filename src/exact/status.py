@@ -1,21 +1,28 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from exact.models import JsonMapping
+from exact.trace import wave_of
 from exact.usage import tool_counts
 
 
-def format_update(node: str, update: Any) -> list[str]:
-    """Turn a LangGraph ``stream_mode=updates`` item into CLI status lines."""
+def format_update(node: str, update: Any, *, verbose: bool = False) -> list[str]:
+    """Turn a LangGraph ``stream_mode=updates`` item into CLI status lines.
+
+    ``verbose`` appends detail lines under the default ones and never changes
+    the default lines.
+    """
     if str(node).startswith("__"):
         return []
     data = update if isinstance(update, dict) else {}
     handler = _HANDLERS.get(node)
-    if handler:
-        return handler(data)
-    return [f"[{node}]"]
+    lines = handler(data) if handler else [f"[{node}]"]
+    detail = _DETAIL.get(node)
+    if verbose and detail:
+        return [*lines, *detail(data)]
+    return lines
 
 
 def format_effort(snapshot: Mapping[str, Any]) -> str:
@@ -91,7 +98,7 @@ def _plan(data: dict) -> list[str]:
     topics = data.get("topics") or []
     wave = data.get("iteration")
     if wave is None and topics:
-        wave = _wave_from_topics(topics)
+        wave = wave_of(topics[0].get("id"))
     return format_plan(topics, wave=wave)
 
 
@@ -160,15 +167,6 @@ def _audit(data: dict) -> list[str]:
     return ["[audit] ok"]
 
 
-def _wave_from_topics(topics: list[dict]) -> int | None:
-    tid = (topics[0].get("id") or "") if topics else ""
-    if tid.startswith("t") and "_" in tid:
-        part = tid[1:].split("_", 1)[0]
-        if part.isdigit():
-            return int(part)
-    return None
-
-
 _HANDLERS = {
     "scout": _scout,
     "decide_clarify": _decide_clarify,
@@ -179,4 +177,37 @@ _HANDLERS = {
     "reflect": _reflect,
     "write_report": _write,
     "audit_citations": _audit,
+}
+
+
+def _brief_detail(data: dict) -> list[str]:
+    must_cover = (data.get("brief") or {}).get("must_cover") or []
+    return [f"  - {item}" for item in must_cover]
+
+
+def _research_detail(data: dict) -> list[str]:
+    findings = data.get("findings") or []
+    gaps = (findings[0].get("gaps") if findings else None) or []
+    errors = dict.fromkeys(data.get("errors") or [])
+    return [f"  gap: {gap}" for gap in gaps] + [f"  error: {err}" for err in errors]
+
+
+def _reflect_detail(data: dict) -> list[str]:
+    return [f"  uncovered: {item}" for item in data.get("uncovered") or []]
+
+
+def _audit_detail(data: dict) -> list[str]:
+    return [
+        f"  dangling: {item.removeprefix('dangling:')}"
+        for item in data.get("uncovered") or []
+        if isinstance(item, str) and item.startswith("dangling:")
+    ]
+
+
+# The lists the default lines fold into a count. Other nodes have no detail.
+_DETAIL: dict[str, Callable[[dict], list[str]]] = {
+    "generate_brief": _brief_detail,
+    "research_agent": _research_detail,
+    "reflect": _reflect_detail,
+    "audit_citations": _audit_detail,
 }

@@ -244,7 +244,7 @@ If `needed=true` and scout hits exist, the question must contain at least one sc
 | `ask_user` | none | `interrupt()`. |
 | `generate_brief` | compress | `must_cover` 1–5. Written once. |
 | `plan_topics` | router | 1 up to the profile's first-wave cap; follow-up waves up to the follow-up cap; no duplicate queries. Follow-up queries come from `reflect`. Do not treat them as prior. If every candidate repeats a prior query, write. |
-| `research_agent` | research + compress | ≤ `max_tool_rounds` model-call rounds (4 normal, 6 max) via `create_agent` + `ModelCallLimitMiddleware` (research) + 1 prune (compress). Isolated. Tool-loop messages use compact snippets (≤240 chars); each tool string into the loop is capped at 8000 chars; prune sees full snippets (≤1200). Tool notes are name + query/url only. Vendor exception → `gaps=["retrieval failed"]` and `errors`. Empty hits → `gaps=["no sources"]`. Prior-title drop that leaves the bag empty → `gaps=["no new sources"]`. |
+| `research_agent` | research + compress | ≤ `max_tool_rounds` model-call rounds (4 normal, 6 max) via `create_agent` + `ModelCallLimitMiddleware` (research) + 1 prune (compress). Isolated. Tool-loop messages use compact snippets (≤240 chars); each tool string into the loop is capped at 8000 chars; prune sees full snippets (≤1200). Tool notes are name + query/url only. Vendor exception → `gaps=["retrieval failed"]` and `errors`. Empty hits → `gaps=["no sources"]`. Prior-title drop that leaves the bag empty → `gaps=["no new sources"]`. `Finding.source_ids` holds minted ids only: prune removes each id that no attempt of this worker minted. |
 | `reflect` | router | Forced write if `iteration + 1 >= max_iterations`. Follow-ups go to `followups`. Do not replace `topics`. |
 | `write_report` | write | Temp 0 (1 when thinking is on). Cite existing ids. `## Open questions`. |
 | `audit_citations` | none | Regex `[src_…]`. One bracket may group ids (`[src_a, src_b]`); each is checked on its own. |
@@ -282,19 +282,140 @@ Parent `messages` stay clarify-only. Research tool transcripts are never written
 | Checkpointer | SQLite `exact.sqlite` |
 | Concurrency | `max_concurrency` is a top-level `RunnableConfig` key set from the profile (3 normal, 4 max), not a `configurable` entry. It is process-scoped: a resume follows the current shell, not the checkpoint. |
 | HTTP | 20s, 1 retry on timeout, 429, or 5xx. Exa has no SDK cancel; on soft timeout Exact reaps the worker thread before retry so calls do not overlap. |
-| Exit | `0` on success; `1` if `uncovered` contains `dangling:`; `1` also on CLI misuse (missing key, finished `--thread-id`), which prints a message to stderr instead of a report |
+| Exit | `0` on success; `1` if `uncovered` contains `dangling:`; `1` also on CLI misuse (missing key, finished `--thread-id`, invalid knob, refused trace path), which prints a message to stderr instead of a report |
 
 `--effort normal|max` selects the profile for one run. Precedence is flag > `EXACT_EFFORT` > `normal`. An invalid value on either path exits `1` with a message on stderr, before the live-key check. An injected `Runtime` carries its own settings, so the flag does not reach it.
 
 Right after the `thread_id=` line the CLI echoes the resolved caps as `effort=<e> waves=<n> topics=<first>/<followup> rounds=<n> hits=<n> clarify=<n> concurrency=<n>`. Thread-scoped values come from the checkpoint on a resume, else from the seed; process-scoped values always come from the current `Settings`.
 
-A resume compares the effort this run resolved with the `effort` the checkpoint holds. A mismatch exits `1` with `effort mismatch: …`, before the finished-thread check. A checkpoint written without the channel reads as `normal`. Only `effort`, `max_iterations`, `max_clarify_turns` and the two topic caps are thread-scoped; `max_tool_rounds`, `max_hits` and `max_concurrency` are process-scoped and follow the current shell. Output order on start is the `thread_id=` line, then the guard, then the echo line.
+A resume compares the effort this run resolved with the `effort` the checkpoint holds. A mismatch exits `1` with `effort mismatch: …`, before the finished-thread check. A checkpoint written without the channel reads as `normal`. Only `effort`, `max_iterations`, `max_clarify_turns` and the two topic caps are thread-scoped; `max_tool_rounds`, `max_hits` and `max_concurrency` are process-scoped and follow the current shell. Output order on start is the `thread_id=` line, then `trace=` when tracing is on, then any trace warning on stderr, then the guard, then the echo line.
 
-`--skip-clarify` for CI. `--thread-id` to resume a thread that waits for an answer.
+`--skip-clarify` for CI. `--thread-id` to resume a thread that waits for an answer. `--trace` and `--verbose` are in §8b.
 
 If the graph interrupts for clarification, the CLI prints the question and exits. Run the CLI again with the same `--thread-id` to answer. A thread that already reached END cannot be re-run: the CLI exits with `thread already finished; use a new --thread-id`, because `sources`, `findings` and `usage` are append channels that a new seed cannot reset.
 
 `ExaClient` accepts an injected SDK. `ElicitClient` is dormant but still accepts an injected `post`. Tests must not call live vendors.
+
+---
+
+## 8b. Trace sidecar and verbose lines
+
+### Controls
+
+| Knob | CLI | Env | `Settings` field | Default |
+| :--- | :--- | :--- | :--- | :--- |
+| Trace | `--trace` / `--no-trace` | `EXACT_TRACE` | `exact_trace: bool` | off |
+| Trace path | `--trace-path PATH` | `EXACT_TRACE_PATH` | `exact_trace_path: str` | empty = derived |
+| Verbose | `--verbose` / `--no-verbose` | `EXACT_VERBOSE` | `exact_verbose: bool` | off |
+
+Precedence is flag > `Settings` field > default. The field reads the environment. An injected `Runtime` supplies the field, so these knobs reach it, unlike `--effort`. `--no-trace` overrides `EXACT_TRACE=1`. `--no-verbose` overrides `EXACT_VERBOSE=1`. The two booleans accept `0`/`1`, `true`/`false`, `yes`/`no` and `on`/`off`. Use `0` or `1`. Any other value exits `1` with `EXACT_TRACE must be a boolean such as 0 or 1; got 'maybe'` on stderr (or the same text for `EXACT_VERBOSE`). An invalid effort value has precedence over an invalid boolean. `--trace-path` only moves the file. It never turns tracing on. Only the CLI reads these three fields.
+
+The two controls are independent. `--verbose` alone writes no sidecar. `--trace` alone changes no status line.
+
+### Path and startup refusals
+
+The derived path is the `traces/{thread_id}.jsonl` child of the directory that holds `EXACT_DB`. The CLI joins the path parts. `EXACT_DB=exact.sqlite` gives `./traces/{thread_id}.jsonl`. A relative path resolves against the working directory at startup. `.gitignore` holds `traces/`.
+
+When tracing is on, the CLI validates and opens the file before it prints a line and before any model call. Each refusal exits `1` with its message on stderr and nothing on stdout:
+
+```text
+trace: --thread-id <id> cannot be a file name; pass --trace-path
+trace: <path> is the checkpoint database; pass a different --trace-path
+trace: cannot write <path>: <reason>
+```
+
+The first refusal applies only to a derived path, when the id holds `/` or `\`, or is `.` or `..`. The second compares both paths after `Path.resolve(strict=False)`. The third covers a parent directory that the CLI cannot create and a file that it cannot open. The CLI creates the parent directory at startup. When the open succeeds, stdout gets `trace=<absolute path>` on the line after `thread_id=`.
+
+The open comes before the effort guard. An `effort mismatch` exit therefore leaves an empty file, or an unchanged file on a resume. It writes no line.
+
+### Resume warnings
+
+Neither the state nor the checkpoint holds the trace flags or the path. A resume must repeat them. The CLI prints each warning that holds on stderr, in this order, and continues:
+
+```text
+warning: trace off; <path> holds earlier turns of this thread                                          (W1)
+warning: thread <id> resumes, but <path> did not exist; pass the same --trace-path as the first run   (W2)
+warning: <path> holds lines for thread <other>; this run is thread <id>                                (W3)
+```
+
+- W1: tracing is off, `--thread-id` is given, and the resolved path exists. This is the one change that a run with no trace flag can show. Stdout does not change.
+- W2: tracing is on, `--thread-id` is given, the checkpoint holds the thread, and the path did not exist before the open. The first run of a new thread gets no W2.
+- W3: tracing is on, and the first line of the file names another `thread_id`. The CLI reads the first line only. A first line that is not JSON, or has no `thread_id`, gives no warning.
+
+### Format
+
+UTF-8 JSONL, one object per line, `ensure_ascii=False`. The tracer flushes each line. Each line has seven envelope keys:
+
+| Key | Meaning |
+| :--- | :--- |
+| `v` | Integer format version. Starts at `1` |
+| `ts` | UTC ISO-8601 time with six fractional digits and `+00:00` |
+| `run_id` | A new UUID4 for each open of the file |
+| `thread_id` | LangGraph thread id |
+| `seq` | Integer. Starts at `1` in each `run_id` and rises by one for each written line |
+| `kind` | Event kind below |
+| `data` | The whole payload |
+
+The order of lines is `(run_id, seq)`. Do not sort by `ts`: parallel workers write at the same time. Runs in one file are in the order of the first line of each `run_id`. A resume with the same trace path appends to the file under a new `run_id`.
+
+Version rule: an added field keeps `v`. A renamed or removed field increases `v`.
+
+Every payload key is always present. An unknown or not applicable value is `null`.
+
+A payload that names a topic carries `topic_id` and `wave` together. The emitter reads `wave` from the topic id. Do not parse the topic id. The first wave is wave `0`. `wave` is `null` when `topic_id` is `null`, is `"scout"`, or has no wave in it. `topic_id` is `"scout"` on the lines of the scout node and `null` on the lines of each other node that is not `research_agent`. This rule applies to a scalar `topic_id` key only, so `plan` has no `topic_id`.
+
+### Kinds
+
+| Kind | `data` keys | Emitter |
+| :--- | :--- | :--- |
+| `run_start` | `query` (the argv text), `verbose` (the resolved flag), `resume` (`bool(snap.next)`), `settings` | CLI |
+| `decision` | `stage`=`clarify`: `stage`, `needed`. `stage`=`reflect`: `stage`, `continue`, `followups`, `uncovered` | CLI sink |
+| `brief` | `intent`, `must_cover`, `question` | CLI sink |
+| `plan` | `wave`, `topics` (list of `{id, query, focus}`) | CLI sink |
+| `tool` | `name`, `outcome`, `topic_id`, `wave`, `query`, `url`, `hit_count`, `sources`, `error` | `Runtime` tracer |
+| `finding` | `topic_id`, `wave`, `claims`, `source_ids`, `gaps` | CLI sink |
+| `usage` | `kind`, `node`, `role`, `model`, `input_tokens`, `output_tokens`, `cache_read`, `cache_creation`, `calls`, `topic_id`, `wave` | CLI sink |
+| `report_refs` | `cited`, `uncited`, `dangling` | CLI |
+| `run_end` | `outcome`, `dangling`, `dropped`, `error` | CLI |
+
+The shapes of `run_start`, `run_end`, `tool` and `report_refs` are **provisional**. They can change before an eval reads them. The envelope is not provisional.
+
+- `run_start.settings` holds the eight keys of the `effort=` echo line (`effort`, `max_iterations`, `max_clarify_turns`, `max_topics_first_wave`, `max_topics_followup`, `max_tool_rounds`, `max_hits`, `max_concurrency`), plus `models` and `max_tokens` (each a map of the four roles), `temperature` and `thinking_budget`. These are the configured values, not the values that thinking writes into a request.
+- **Redaction rule:** the sidecar never holds an API key or any `Settings` field whose name ends in `_api_key`.
+- **Summary-only rule:** the sidecar never holds a snippet body, a highlights body or a vendor JSON blob. A source appears only as a crumb.
+- The sink writes one `decision` per `decide_clarify` chunk and one per `reflect` chunk. `ask_user` and `audit_citations` write no `decision`. `reflect.followups` is `[]` when the node returns none. The key name `continue` is a Python keyword: read it by subscript.
+- `brief` holds the raw values of the `brief` channel. `intent` is `null` when the node gives none.
+- `plan.wave` is the chunk `iteration`, else the wave of the first topic id. An empty topic list is still one line.
+- `finding` has five keys. `finding.claims` is a count, not the claim list of `Finding`. `Finding.covered` is not written. A worker that found nothing still writes one `finding` with its gap text.
+- `usage` has one line per event of a chunk `usage` list. A vendor tool event writes `null`, not `0`, for `role`, `model` and the four token keys. To sum tokens, keep the lines where `kind` is `llm`. The file holds no USD. A structured LLM call that fails returns no usage event, so no `usage` line records it.
+- `tool` has one line per attempt. `outcome` is `ok`, `refused` or `error`. `query` is set for a search and `url` for a highlights read; the other one is `null`. `hit_count` is the raw hit count of the attempt, before the prior-title drop, and `null` on `refused` and `error`. `sources` is one crumb `{id, title, url, doi}` per minted source, and `[]` on `refused` and `error`. `url` and `doi` can each be `null`. A hit that the prior-title drop removes has no crumb. `error` is `str(exc)` cut to 500 characters on `error`, else `null`. The `errors` channel keeps its own label prefix, so join a `tool` error to an `errors` item on `topic_id`, not on the text.
+- A failed attempt has a `tool` line and no `usage` line: `usage` counts billable calls and `tool` records attempts. A tool loop that fails before any attempt gives a `finding` with `lane <focus>: retrieval failed` and no `tool` line.
+- The scout writes one `tool` line per Exa leg that ran, after it mints the `src_scout_*` ids. Its `hit_count` is the number of hits of that leg.
+- `report_refs` is written on a `finished` run only, just before `run_end`. `cited` is the sorted unique set of the `[src_*]` ids in the final report. `uncited` is the sorted set of `sources` ids not in `cited`. `dangling` is the sorted set of `cited` ids not in `sources`.
+- `run_end.outcome` is `finished`, `interrupted` (the clarify pause, or Ctrl-C), `rejected` (`thread already finished`) or `error` (any other exception, with `error` = `<Class>: <message>` cut to 500 characters). `dangling` is the count of `dangling:` items in `uncovered` on `finished`, else `null`. A dangling-citation run is `finished` and exits `1`. `dropped` is the number of events the run could not write.
+- `run_end` is the last line of its run. A `run_id` with no `run_end` means that the process stopped before the end.
+
+**Join invariant.** In one `run_id`, each id in `finding.source_ids`, and each `report_refs.cited` id that is not in `dangling`, is in the crumbs of a `tool` line whose `topic_id` is not `"scout"`. No `dangling` id is in such a crumb.
+
+### Write rules
+
+- The tracer is the only writer of the file. One process-local lock guards each write and the `seq` it takes. Two processes on one path can mix their lines.
+- `--trace` sends each worker's write through this lock and one flush for each line. This serializes the workers at each write. The ceilings limit the cost: concurrency is at most 4 and tool rounds at most 6.
+- A write that fails does not stop the run. The first failure prints `warning: trace write failed: <exc>; later failures are counted in run_end` on stderr. Later failures only increase the count. A chunk that the sink cannot read also counts as one dropped event.
+- After `run_end` the tracer is closed. A later write from a worker thread is discarded without a count or a warning.
+
+### Verbose detail lines
+
+`--verbose` adds detail lines under four default status lines. Each detail line starts with two spaces. The items keep the order of the state list. An empty list adds no line.
+
+| After | Detail line | Source |
+| :--- | :--- | :--- |
+| `[brief] …` and its question line | `  - {item}` | `brief.must_cover` |
+| `[research tN] …` | `  gap: {gap}`, then `  error: {error}` once per distinct error | `findings[0].gaps`, `errors` |
+| `[reflect] …` and its follow-ups | `  uncovered: {item}` | `uncovered` |
+| `[audit] …` | `  dangling: {id}`, without the `dangling:` prefix | `uncovered` items that start with `dangling:` |
+
+`[scout]`, `[clarify]`, `[plan]` and `[write]` print the same lines under both settings. The default status lines do not change.
 
 ---
 
@@ -303,11 +424,13 @@ If the graph interrupts for clarification, the CLI prints the question and exits
 ```
 src/exact/
   cli.py config.py models.py graph.py prompts.py audit.py intent.py usage.py
+  status.py sink.py trace.py
   nodes/   scout, clarify, brief, plan, research, reflect, write, audit_node
   tools/   exa.py elicit.py
 tests/
   test_audit.py test_clarify.py test_research.py test_graph.py
   test_cli.py test_exa.py test_elicit.py test_status.py test_usage.py
+  test_sink.py test_trace.py
 ```
 
 ---

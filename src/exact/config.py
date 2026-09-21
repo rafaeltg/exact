@@ -107,6 +107,7 @@ class Settings(BaseSettings):
     exact_db: str = "exact.sqlite"
     exact_trace: bool = False
     exact_trace_path: str = ""
+    exact_verbose: bool = False
     exact_effort: Effort = "normal"
     max_iterations: int = 3
     max_clarify_turns: int = 3

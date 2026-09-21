@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from exact import prompts
-from exact.models import PlanDecision, ReflectDecision
+from exact.models import Finding, PlanDecision, ReflectDecision
 from exact.nodes import research as research_module
 from exact.nodes.plan import plan_topics, route_research
 from exact.nodes.reflect import reflect
@@ -17,7 +17,7 @@ from exact.nodes.research import (
     research_agent,
 )
 from exact.nodes.scout import _interleave, scout
-from tests.fakes import FakeExa, FakeLLM, runtime, source
+from tests.fakes import FakeExa, FakeLLM, RecordingTracer, runtime, source
 
 
 def _payload(**overrides) -> dict:
@@ -296,7 +296,7 @@ def test_concurrent_ingest_mints_unique_source_ids(monkeypatch):
         return real_mint(topic_id, sources, start)
 
     monkeypatch.setattr(research_module, "_mint", slow_mint)
-    bag = _Bag("t0_1", [], 5)
+    bag = _Bag("t0_1", [], 5, RecordingTracer())
     batches = [[source(title=f"S{i}")] for i in range(20)]
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(bag.ingest, batches))
@@ -713,3 +713,146 @@ def test_interleave_keeps_every_hit_of_a_ragged_pair(
         [{"focus": "publication"} for _ in range(papers)],
     )
     assert [h["focus"] for h in got] == expected
+
+
+def _finding(source_ids: list[str]) -> Finding:
+    return Finding(topic_id="t0_1", claims=["X is Y"], source_ids=source_ids, gaps=[])
+
+
+def test_prune_keeps_the_minted_id_and_drops_the_unminted_one():
+    llm = FakeLLM(finding=_finding(["src_t0_1_1", "src_t0_1_9"]))
+    out = research_agent(_payload(), runtime(llm=llm))
+    assert out["findings"][0]["source_ids"] == ["src_t0_1_1"]
+
+
+def test_prune_with_only_unminted_ids_yields_empty_source_ids():
+    llm = FakeLLM(finding=_finding(["src_t0_1_9", "src_other"]))
+    out = research_agent(_payload(), runtime(llm=llm))
+    assert out["findings"][0]["source_ids"] == []
+
+
+def test_prune_with_every_id_minted_keeps_the_list_and_its_order():
+    llm = FakeLLM(finding=_finding(["src_t0_1_2", "src_t0_1_1"]))
+    exa = FakeExa(hits=[source(title="A"), source(title="B")])
+    out = research_agent(_payload(), runtime(llm=llm, exa=exa))
+    assert out["findings"][0]["source_ids"] == ["src_t0_1_2", "src_t0_1_1"]
+
+
+def _traced(llm: FakeLLM | None = None, exa: FakeExa | None = None, **payload):
+    tracer = RecordingTracer()
+    out = research_agent(_payload(**payload), runtime(llm=llm, exa=exa, tracer=tracer))
+    return out, tracer
+
+
+def test_a_successful_search_writes_one_ok_tool_line():
+    exa = FakeExa(hits=[source(title="A"), source(title="B")])
+    _, tracer = _traced(exa=exa)
+    assert tracer.payloads("tool") == [
+        {
+            "name": "exa_search",
+            "outcome": "ok",
+            "topic_id": "t0_1",
+            "wave": 0,
+            "query": "test",
+            "url": None,
+            "hit_count": 2,
+            "sources": [
+                {
+                    "id": "src_t0_1_1",
+                    "title": "A",
+                    "url": "https://example.com/a",
+                    "doi": None,
+                },
+                {
+                    "id": "src_t0_1_2",
+                    "title": "B",
+                    "url": "https://example.com/a",
+                    "doi": None,
+                },
+            ],
+            "error": None,
+        }
+    ]
+
+
+def test_a_hit_the_prior_title_dedupe_drops_counts_and_mints_no_crumb():
+    exa = FakeExa(hits=[source(title="Old"), source(title="New")])
+    _, tracer = _traced(exa=exa, prior_titles=["Old"])
+    (line,) = tracer.payloads("tool")
+    assert line["hit_count"] == 2
+    assert [c["title"] for c in line["sources"]] == ["New"]
+
+
+def test_a_raising_exa_client_writes_one_error_tool_line():
+    _, tracer = _traced(exa=FakeExa(error=RuntimeError("vendor down")))
+    (line,) = tracer.payloads("tool")
+    assert line["outcome"] == "error"
+    assert line["hit_count"] is None
+    assert line["sources"] == []
+    assert line["error"] == "vendor down"
+
+
+def test_a_long_vendor_error_is_cut_to_500_characters():
+    _, tracer = _traced(exa=FakeExa(error=RuntimeError("x" * 900)))
+    assert tracer.payloads("tool")[0]["error"] == "x" * 500
+
+
+def test_a_failed_attempt_writes_no_usage_event():
+    out, _ = _traced(exa=FakeExa(error=RuntimeError("vendor down")))
+    assert [e for e in out["usage"] if e["kind"] == "exa_search"] == []
+
+
+def test_no_snippet_or_highlights_body_reaches_a_tool_line():
+    llm = FakeLLM(
+        tool_script=[
+            ("exa_search", {"query": "define X"}),
+            ("exa_highlights", {"url": "https://example.com/a"}),
+        ]
+    )
+    exa = FakeExa(hits=[source(snippet="SECRET BODY TEXT")])
+    _, tracer = _traced(llm=llm, exa=exa)
+    assert len(tracer.payloads("tool")) == 2
+    assert "SECRET BODY TEXT" not in repr(tracer.events)
+
+
+def test_a_highlights_call_on_an_unretrieved_url_writes_one_refused_line():
+    url = "https://attacker.example/?q=x"
+    llm = FakeLLM(tool_name="exa_highlights", tool_args={"url": url})
+    out, tracer = _traced(llm=llm)
+    assert tracer.payloads("tool") == [
+        {
+            "name": "exa_highlights",
+            "outcome": "refused",
+            "topic_id": "t0_1",
+            "wave": 0,
+            "query": None,
+            "url": url,
+            "hit_count": None,
+            "sources": [],
+            "error": None,
+        }
+    ]
+    assert [e for e in out["usage"] if e["kind"] == "exa_highlights"] == []
+
+
+def test_a_highlights_call_on_a_retrieved_url_writes_an_ok_line():
+    llm = FakeLLM(
+        tool_script=[
+            ("exa_search", {"query": "define X"}),
+            ("exa_highlights", {"url": "https://example.com/a"}),
+        ]
+    )
+    _, tracer = _traced(llm=llm)
+    highlights = [p for p in tracer.payloads("tool") if p["name"] == "exa_highlights"]
+    assert [(p["outcome"], p["url"], p["query"]) for p in highlights] == [
+        ("ok", "https://example.com/a", None)
+    ]
+
+
+def test_a_publication_search_writes_one_ok_line_and_no_refused_line():
+    llm = FakeLLM(tool_name="exa_publication_search", tool_args={"query": "trials"})
+    topic = {"id": "t0_1", "query": "trials", "focus": "publication"}
+    _, tracer = _traced(llm=llm, topic=topic)
+    assert [(p["name"], p["outcome"]) for p in tracer.payloads("tool")] == [
+        ("exa_publication_search", "ok")
+    ]

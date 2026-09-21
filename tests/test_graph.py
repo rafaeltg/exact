@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from langchain_core.messages import ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from exact.cli import thread_config
+from exact.cli import main, thread_config
 from exact.graph import build_graph
 from exact.models import (
     ClarificationOption,
@@ -12,7 +13,16 @@ from exact.models import (
     PlanDecision,
     ReflectDecision,
 )
-from tests.fakes import FakeExa, FakeLLM, graph_seed, runtime, source
+from exact.nodes.scout import scout
+from tests.fakes import (
+    FakeExa,
+    FakeLLM,
+    RecordingTracer,
+    graph_seed,
+    read_trace,
+    runtime,
+    source,
+)
 
 
 def _config(thread: str) -> dict:
@@ -421,3 +431,143 @@ def test_workers_overlap_under_max_concurrency_three():
         graph_seed(), thread_config("t-c3", max_concurrency=3)
     )
     assert exa.peak >= 2
+
+
+# ─── Trace: scout tool lines and the join invariant ─────────────────────
+
+_ACADEMIC = "What do trials of GLP-1 show?"
+
+
+def _scout_tools(query: str, exa: FakeExa) -> list[dict]:
+    tracer = RecordingTracer()
+    scout({"initial_query": query, "clarify_turns": 0}, runtime(exa=exa, tracer=tracer))
+    return tracer.payloads("tool")
+
+
+def test_a_non_academic_scout_writes_one_tool_line():
+    lines = _scout_tools("What is X?", FakeExa())
+    assert [(line["name"], line["outcome"]) for line in lines] == [("exa_search", "ok")]
+    assert lines[0]["topic_id"] == "scout"
+    assert lines[0]["wave"] is None
+    assert lines[0]["query"] == "What is X?"
+
+
+def test_an_academic_scout_writes_one_tool_line_per_leg():
+    lines = _scout_tools(_ACADEMIC, FakeExa())
+    assert [line["name"] for line in lines] == ["exa_search", "exa_publication_search"]
+
+
+def test_every_scout_crumb_carries_a_minted_scout_id():
+    exa = FakeExa(hits=[source(title="A"), source(title="B")])
+    crumbs = [c for line in _scout_tools(_ACADEMIC, exa) for c in line["sources"]]
+    assert sorted(c["id"] for c in crumbs) == [f"src_scout_{i}" for i in range(1, 5)]
+
+
+def test_a_failing_scout_leg_writes_an_error_line_beside_the_ok_leg():
+    exa = FakeExa(failing={"publication": RuntimeError("papers down")})
+    web, papers = _scout_tools(_ACADEMIC, exa)
+    assert (web["outcome"], web["hit_count"]) == ("ok", 1)
+    assert papers == {
+        "name": "exa_publication_search",
+        "outcome": "error",
+        "topic_id": "scout",
+        "wave": None,
+        "query": _ACADEMIC,
+        "url": None,
+        "hit_count": None,
+        "sources": [],
+        "error": "papers down",
+    }
+
+
+def _trace_run(tmp_path, llm: FakeLLM, exa: FakeExa | None = None) -> list[dict]:
+    path = tmp_path / "run.jsonl"
+    main(
+        ["What is X?", "--skip-clarify", "--trace", "--trace-path", str(path)],
+        runtime=runtime(llm=llm, exa=exa, exact_model="anthropic:m"),
+        checkpointer=InMemorySaver(),
+    )
+    return read_trace(path)
+
+
+def _research_crumb_ids(lines: list[dict], run_id: str) -> set[str]:
+    return {
+        c["id"]
+        for line in lines
+        if line["kind"] == "tool"
+        and line["run_id"] == run_id
+        and line["data"]["topic_id"] != "scout"
+        for c in line["data"]["sources"]
+    }
+
+
+def _data(lines: list[dict], kind: str) -> list[dict]:
+    return [line["data"] for line in lines if line["kind"] == kind]
+
+
+def _two_topic_llm(**kwargs) -> FakeLLM:
+    return FakeLLM(
+        plan=PlanDecision(topics=["alpha", "beta"], reason="two"),
+        echo_topic=True,
+        **kwargs,
+    )
+
+
+def test_each_finding_source_id_resolves_to_a_research_crumb_of_its_run(tmp_path):
+    lines = _trace_run(tmp_path, _two_topic_llm())
+    crumbs = _research_crumb_ids(lines, lines[0]["run_id"])
+    ids = [i for finding in _data(lines, "finding") for i in finding["source_ids"]]
+    assert ids
+    assert set(ids) <= crumbs
+
+
+def test_each_resolved_cited_id_resolves_to_a_research_crumb_of_its_run(tmp_path):
+    llm = FakeLLM(report="A [src_t0_1_1]. B [src_t0_1_2].")
+    exa = FakeExa(hits=[source(title="A"), source(title="B")])
+    lines = _trace_run(tmp_path, llm, exa)
+    (refs,) = _data(lines, "report_refs")
+    resolved = set(refs["cited"]) - set(refs["dangling"])
+    assert resolved == {"src_t0_1_1", "src_t0_1_2"}
+    assert resolved <= _research_crumb_ids(lines, lines[0]["run_id"])
+
+
+def test_no_dangling_id_resolves_to_a_research_crumb_of_its_run(tmp_path):
+    lines = _trace_run(tmp_path, FakeLLM(report="A [src_scout_1]. B [src_t9_9_9]."))
+    (refs,) = _data(lines, "report_refs")
+    assert refs["dangling"] == ["src_scout_1", "src_t9_9_9"]
+    assert not set(refs["dangling"]) & _research_crumb_ids(lines, lines[0]["run_id"])
+
+
+def test_one_trace_file_answers_both_eval_questions(tmp_path):
+    exa = FakeExa(failing={"beta": RuntimeError("vendor down")})
+    lines = _trace_run(tmp_path, _two_topic_llm(), exa)
+    assert not list(tmp_path.glob("*.sqlite"))
+
+    # Which topic in which wave produced no usable source, and which tool
+    # attempt failed first for that topic?
+    empty = [
+        (f["topic_id"], f["wave"])
+        for f in _data(lines, "finding")
+        if not f["source_ids"]
+    ]
+    assert empty == [("t0_2", 0)]
+    failed = [
+        line
+        for line in lines
+        if line["kind"] == "tool"
+        and line["data"]["topic_id"] == "t0_2"
+        and line["data"]["outcome"] == "error"
+    ]
+    first = min(failed, key=lambda line: line["seq"])["data"]
+    assert (first["name"], first["query"], first["error"]) == (
+        "exa_search",
+        "beta",
+        "vendor down",
+    )
+
+    # Did a settings change move the claim count or the source count?
+    (start,) = _data(lines, "run_start")
+    assert start["settings"]["models"]["research"] == "anthropic:m"
+    assert start["settings"]["thinking_budget"] == 0
+    assert sum(f["claims"] for f in _data(lines, "finding")) == 1
+    assert _research_crumb_ids(lines, lines[0]["run_id"]) == {"src_t0_1_1"}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from typing import NamedTuple
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
@@ -18,6 +19,7 @@ from exact.models import (
     focus_label,
 )
 from exact.tools.exa import ExaClient
+from exact.trace import Tracer, clip_error, crumb, wave_of
 from exact.usage import (
     invoke_structured,
     llm_events_from_messages,
@@ -81,13 +83,22 @@ def _call_note(name: str | None, args: dict) -> str:
     return f"{name}: {args.get('query') or ''}"
 
 
+class _Ingested(NamedTuple):
+    """What one successful attempt added to the bag."""
+
+    text: str
+    hit_count: int
+    crumbs: list[dict]
+
+
 class _Bag:
     """Mutable retrieval bag for one research worker."""
 
-    def __init__(self, topic_id: str, prior: list[str], max_hits: int):
+    def __init__(self, topic_id: str, prior: list[str], max_hits: int, tracer: Tracer):
         self.topic_id = topic_id
         self.prior = prior
         self.max_hits = max_hits
+        self.tracer = tracer
         self.collected: list[dict] = []
         self.errors: list[str] = []
         self.notes: list[str] = []
@@ -115,7 +126,7 @@ class _Bag:
             row["focus"] = owner.get("focus")
             row["doi"] = owner.get("doi")
 
-    def ingest(self, found: list[Source]) -> str:
+    def ingest(self, found: list[Source]) -> _Ingested:
         if found:
             self.saw_hits = True
         fresh = _drop_prior(found, self.prior)
@@ -123,16 +134,43 @@ class _Bag:
             minted = _mint(self.topic_id, fresh, len(self.collected) + 1)
             self._inherit(minted)
             self.collected.extend(minted)
-        return _compact_sources(minted)
+        # ``hit_count`` is the raw count, before the prior-title dedupe.
+        return _Ingested(
+            _compact_sources(minted), len(found), [crumb(row) for row in minted]
+        )
 
-    def call(self, label: str, fetch) -> str:
+    def _tool_line(self, name: str, args: dict, outcome: str) -> dict:
+        """A ``tool`` summary with no result; an ``ok`` attempt adds its own."""
+        return {
+            "name": name,
+            "outcome": outcome,
+            "topic_id": self.topic_id,
+            "wave": wave_of(self.topic_id),
+            "query": args.get("query"),
+            "url": args.get("url"),
+            "hit_count": None,
+            "sources": [],
+            "error": None,
+        }
+
+    def refuse(self, name: str, args: dict) -> None:
+        """Trace an attempt the tool turned away before any vendor call."""
+        self.tracer.emit("tool", self._tool_line(name, args, "refused"))
+
+    def call(self, label: str, fetch, args: dict) -> str:
         try:
-            out = self.ingest(fetch())
+            got = self.ingest(fetch())
         except Exception as exc:  # noqa: BLE001
             self.errors.append(f"{label}: {exc}")
+            failed = self._tool_line(label, args, "error")
+            self.tracer.emit("tool", {**failed, "error": clip_error(str(exc))})
             return clip_tool_text(f"{label} failed: {exc}")
+        ok = self._tool_line(label, args, "ok")
+        self.tracer.emit(
+            "tool", {**ok, "hit_count": got.hit_count, "sources": got.crumbs}
+        )
         self.usage.append(tool_event(label, "research_agent"))
-        return clip_tool_text(out)
+        return clip_tool_text(got.text)
 
 
 class _Tools:
@@ -144,45 +182,54 @@ class _Tools:
 
     def exa_search(self, query: str) -> str:
         """Search the web with Exa."""
-        self.bag.note("exa_search", {"query": query})
+        args = {"query": query}
+        self.bag.note("exa_search", args)
         return self.bag.call(
-            "exa_search", lambda: self.exa.search(query, num=self.bag.max_hits)
+            "exa_search", lambda: self.exa.search(query, num=self.bag.max_hits), args
         )
 
     def exa_people_search(self, query: str) -> str:
         """Search professional people profiles with Exa."""
-        self.bag.note("exa_people_search", {"query": query})
+        args = {"query": query}
+        self.bag.note("exa_people_search", args)
         return self.bag.call(
             "exa_people_search",
             lambda: self.exa.search(query, num=self.bag.max_hits, category="people"),
+            args,
         )
 
     def exa_company_search(self, query: str) -> str:
         """Search company profiles with Exa."""
-        self.bag.note("exa_company_search", {"query": query})
+        args = {"query": query}
+        self.bag.note("exa_company_search", args)
         return self.bag.call(
             "exa_company_search",
             lambda: self.exa.search(query, num=self.bag.max_hits, category="company"),
+            args,
         )
 
     def exa_highlights(self, url: str) -> str:
         """Get query-relevant highlights for a URL already retrieved."""
+        args = {"url": url}
         if url not in self.bag.urls():
+            self.bag.refuse("exa_highlights", args)
             return (
                 "exa_highlights refused: url is not a retrieved source. "
                 "Call it only with a url from the search results above."
             )
-        self.bag.note("exa_highlights", {"url": url})
-        return self.bag.call("exa_highlights", lambda: self.exa.highlights(url))
+        self.bag.note("exa_highlights", args)
+        return self.bag.call("exa_highlights", lambda: self.exa.highlights(url), args)
 
     def exa_publication_search(self, query: str) -> str:
         """Search academic publications with Exa."""
-        self.bag.note("exa_publication_search", {"query": query})
+        args = {"query": query}
+        self.bag.note("exa_publication_search", args)
         return self.bag.call(
             "exa_publication_search",
             lambda: self.exa.search(
                 query, num=self.bag.max_hits, category="publication"
             ),
+            args,
         )
 
     def as_list(self, focus: str | None) -> list[StructuredTool]:
@@ -226,7 +273,6 @@ def _empty_finding(
 def _prune(
     runtime: Runtime, topic_id: str, brief: dict, collected, notes, errors
 ) -> ExactState:
-    model_id = role_model_id(runtime.settings, "compress")
     try:
         finding, usage = invoke_structured(
             runtime.model("compress"),
@@ -244,9 +290,13 @@ def _prune(
             ],
             node="research_agent",
             role="compress",
-            model_id=model_id,
+            model_id=role_model_id(runtime.settings, "compress"),
         )
         finding.topic_id = topic_id
+        # The compress model may name an id no attempt minted; the trace joins
+        # on minted ids only.
+        ids = {s["id"] for s in collected}
+        finding.source_ids = [i for i in finding.source_ids if i in ids]
     except Exception as exc:  # noqa: BLE001
         errors.append(f"prune: {exc}")
         finding = Finding(
@@ -335,7 +385,9 @@ def research_agent(state: ResearchPayload, runtime: Runtime) -> ExactState:
     topic = state["topic"]
     brief = state.get("brief") or {}
     topic_id = topic.get("id") or "t"
-    bag = _Bag(topic_id, state.get("prior_titles") or [], settings.max_hits)
+    bag = _Bag(
+        topic_id, state.get("prior_titles") or [], settings.max_hits, runtime.tracer
+    )
     exa = _client(runtime, settings)
     tools = _Tools(bag, exa)
     loop_usage = _run_agent(runtime, tools, topic, brief, bag.prior)

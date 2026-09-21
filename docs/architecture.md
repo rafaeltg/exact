@@ -221,13 +221,38 @@ If `uncovered` contains a `dangling:` item, the CLI exits with status `1`.
 
 ---
 
+## Trace sidecar and status lines
+
+```
+ stream updates  --sink.py-->    tracer  --append-->  traces/{thread_id}.jsonl
+                 --status.py-->  CLI stdout
+ _Bag / scout    --emit-->       Runtime.tracer  --append-->  same file (one lock)
+ CLI: flags, path checks, open, run_start, report_refs, run_end, close
+```
+
+| Role | Owns |
+| :--- | :--- |
+| Tracer (`trace.py`) | The only writer of the sidecar. One lock, `run_id`, `seq`, one flush for each line. `NullTracer` writes nothing when tracing is off. |
+| CLI sink (`sink.py`) | Derives `decision`, `brief`, `plan`, `finding` and `usage` from the `stream_mode=updates` chunks that the status loop reads. It needs no node binding. A chunk that it cannot read is one dropped event, not a failed run. |
+| `_Bag`, `_Tools`, scout | Emit one `tool` summary for each attempt: name, args, hit count and one crumb for each minted source. They never put raw tool I/O on parent state. |
+| `status.py` | Human lines only. `--verbose` adds detail lines. It never writes the sidecar. |
+| CLI | Resolves the flags, checks and opens the path, writes `run_start`, `report_refs` and `run_end`, and closes the tracer in a `finally`. |
+
+The tracer is run-scoped. The CLI builds it after it derives `thread_id`, then gives `build_graph` a copy of the runtime made with `dataclasses.replace`. The CLI never changes the injected `Runtime`: every node closes over one runtime object. `Runtime.tracer` is a field, not an `extras` key, because `replace` would share the `extras` dict with the caller. The tracer never goes into checkpointed state. `trace.py` imports nothing from `exact`, so every module can import it without a cycle.
+
+The parent graph still never sees raw tool I/O. The sidecar holds summaries only. See spec §8b.
+
+---
+
 ## Layout
 
 ```
- cli.py --> config.py
+ cli.py --> config.py --> trace.py
         --> usage.py
+        --> status.py
+        --> sink.py --> trace.py
         --> graph.py --> models.py
-                     --> nodes/*
+                     --> nodes/* --> trace.py
                      --> tools/exa.py
                      --> tools/elicit.py
 ```
