@@ -229,3 +229,5 @@ traces/
 
 # Claude Code working artifacts (plans, review reports) — not part of the repo
 .claude/artifacts/
+
+.import_linter_cache/
