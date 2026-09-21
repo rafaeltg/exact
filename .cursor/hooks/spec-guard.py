@@ -89,6 +89,17 @@ class ParsedSpec:
     acceptance: list[list[int]]
 
 
+@dataclass(frozen=True)
+class _ParsedSections:
+    """The parsed body sections of one specification."""
+
+    requirements: list[Entry]
+    decisions: list[Entry]
+    questions: list[Entry]
+    evidence: list[Evidence]
+    acceptance: list[list[int]]
+
+
 def _repo_root() -> Path:
     """Resolve the configured repository root."""
     from os import environ
@@ -153,19 +164,21 @@ def _strip_fences(lines: list[str]) -> list[str | None]:
     return masked
 
 
-def _section_ranges(
-    lines: list[str | None],
-) -> tuple[dict[str, tuple[int, int]], list[str]]:
-    """Find required section ranges and structural section errors."""
-    headings = [
+def _section_headings(lines: list[str | None]) -> list[tuple[int, str]]:
+    """Extract level-two headings with their line positions."""
+    return [
         (index, match.group(1))
         for index, line in enumerate(lines)
         if line is not None and (match := _SECTION.match(line))
     ]
-    errors: list[str] = []
+
+
+def _section_ranges(
+    lines: list[str | None],
+) -> tuple[dict[str, tuple[int, int]], list[str]]:
+    """Find required section ranges and structural section errors."""
+    headings = _section_headings(lines)
     names = [name for _, name in headings]
-    if len(names) != len(set(names)):
-        errors.append("duplicate section heading")
     ranges = {
         name: (
             start + 1,
@@ -174,6 +187,9 @@ def _section_ranges(
         for pos, (start, name) in enumerate(headings)
         if name in _REQUIRED
     }
+    errors: list[str] = []
+    if len(names) != len(set(names)):
+        errors.append("duplicate section heading")
     if names[: len(_REQUIRED)] != list(_REQUIRED):
         errors.append("required sections are missing or out of order")
     if any(name not in ranges for name in _REQUIRED):
@@ -181,21 +197,41 @@ def _section_ranges(
     return ranges, errors
 
 
-def _metadata(lines: list[str | None]) -> tuple[dict[str, str], list[str]]:
-    """Parse the four metadata fields before the first section."""
-    values: dict[str, str] = {}
-    errors: list[str] = []
-    if not lines or lines[0] is None or not lines[0].startswith("# "):
-        errors.append("first line must be a level-one title")
+def _metadata_match(line: str) -> tuple[str, str] | None:
+    """Return the metadata field represented by one line."""
+    for name, pattern in _METADATA.items():
+        match = pattern.match(line)
+        if match:
+            return name, match.group(1)
+    return None
+
+
+def _metadata_lines(lines: list[str | None]) -> list[str]:
+    """Collect metadata lines before the first section."""
+    values: list[str] = []
     for line in lines[1:]:
         if line is None or _SECTION.match(line):
             break
-        for name, pattern in _METADATA.items():
-            if match := pattern.match(line):
-                if name in values:
-                    errors.append(f"duplicate metadata field: {name}")
-                values[name] = match.group(1)
-                break
+        values.append(line)
+    return values
+
+
+def _metadata(lines: list[str | None]) -> tuple[dict[str, str], list[str]]:
+    """Parse the four metadata fields before the first section."""
+    values: dict[str, str] = {}
+    errors = (
+        []
+        if lines and lines[0] is not None and lines[0].startswith("# ")
+        else ["first line must be a level-one title"]
+    )
+    for line in _metadata_lines(lines):
+        match = _metadata_match(line)
+        if match is None:
+            continue
+        name, value = match
+        if name in values:
+            errors.append(f"duplicate metadata field: {name}")
+        values[name] = value
     errors.extend(
         f"missing metadata field: {name}" for name in _METADATA if name not in values
     )
@@ -208,6 +244,17 @@ def _sequence(numbers: list[int], label: str) -> list[str]:
     return [] if numbers == wanted else [f"{label} IDs are not contiguous"]
 
 
+def _entry_field(
+    line: str, patterns: dict[str, re.Pattern[str]]
+) -> tuple[str, str] | None:
+    """Return the first structured field found on a line."""
+    for name, pattern in patterns.items():
+        match = pattern.match(line)
+        if match:
+            return name, match.group(1)
+    return None
+
+
 def _entry_fields(
     body: list[str | None], patterns: dict[str, re.Pattern[str]], label: str
 ) -> tuple[dict[str, str], list[str]]:
@@ -217,17 +264,34 @@ def _entry_fields(
     for line in body:
         if line is None or not line:
             continue
-        matched = False
-        for name, pattern in patterns.items():
-            if match := pattern.match(line):
-                matched = True
-                if name in values:
-                    errors.append(f"duplicate {label} field: {name}")
-                values[name] = match.group(1)
-                break
-        if not matched:
+        field = _entry_field(line, patterns)
+        if field is None:
             errors.append(f"invalid {label} field: {line}")
+            continue
+        name, value = field
+        if name in values:
+            errors.append(f"duplicate {label} field: {name}")
+        values[name] = value
     return values, errors
+
+
+def _entry_preamble_error(
+    current_number: int | None, line: str | None, label: str
+) -> str | None:
+    """Return an error for content before an entry starts."""
+    if current_number is not None or not line or line.isspace():
+        return None
+    return f"content before first {label} entry"
+
+
+def _start_entry(
+    heading: re.Pattern[str], text: str, label: str
+) -> tuple[int | None, list[str]]:
+    """Parse one numbered entry heading."""
+    entry = heading.match(text)
+    if entry is None:
+        return None, [f"invalid {label} heading: {text}"]
+    return int(entry.group(1)), []
 
 
 def _entries(
@@ -248,17 +312,13 @@ def _entries(
                 entries, errors = _finish_entry(
                     entries, errors, current_number, body, fields, label
                 )
-            entry = heading.match(match.group(1))
-            if entry is None:
-                errors.append(f"invalid {label} heading: {match.group(1)}")
-                current_number = None
-                body = []
-            else:
-                current_number = int(entry.group(1))
-                body = []
+            current_number, found = _start_entry(heading, match.group(1), label)
+            errors.extend(found)
+            body = []
             continue
-        if current_number is None and line and not line.isspace():
-            errors.append(f"content before first {label} entry")
+        preamble_error = _entry_preamble_error(current_number, line, label)
+        if preamble_error:
+            errors.append(preamble_error)
         else:
             body.append(line)
     if current_number is not None:
@@ -291,36 +351,59 @@ def _finish_entry(
     return entries, errors
 
 
-def _evidence_value(raw: str, key: str = "") -> Evidence | None:
-    """Parse one evidence token."""
-    if raw in {"person-decision"}:
-        return Evidence(key, raw)
-    if raw.startswith("url:"):
-        parsed = urlparse(raw[4:])
-        valid = (
-            parsed.scheme == "https"
-            and parsed.netloc
-            and not any(char.isspace() for char in raw)
-        )
-        return Evidence(key, raw) if valid else None
-    if not raw.startswith("repo:"):
-        return None
-    token = raw[5:]
-    line: int | None = None
-    if "#L" in token and "::" in token:
-        return None
-    if "#L" in token:
-        token, suffix = token.rsplit("#L", 1)
-        if not suffix.isdigit() or int(suffix) < 1:
-            return None
-        line = int(suffix)
+def _url_evidence(raw: str, key: str) -> Evidence | None:
+    """Parse an HTTPS evidence token."""
+    parsed = urlparse(raw[4:])
+    valid = (
+        parsed.scheme == "https"
+        and parsed.netloc
+        and not any(char.isspace() for char in raw)
+    )
+    return Evidence(key, raw) if valid else None
+
+
+def _repo_line(token: str) -> tuple[str, int | None] | None:
+    """Extract an optional repository line reference."""
+    if "#L" not in token:
+        return token, None
     if "::" in token:
-        token, symbol = token.split("::", 1)
-        if not symbol or any(char.isspace() for char in symbol):
-            return None
-    if not _safe_repo_path(token):
+        return None
+    token, suffix = token.rsplit("#L", 1)
+    if not suffix.isdigit() or int(suffix) < 1:
+        return None
+    return token, int(suffix)
+
+
+def _repo_symbol(token: str) -> str | None:
+    """Remove and validate an optional repository symbol."""
+    if "::" not in token:
+        return token
+    token, symbol = token.split("::", 1)
+    return token if symbol and not any(char.isspace() for char in symbol) else None
+
+
+def _repo_evidence(raw: str, key: str) -> Evidence | None:
+    """Parse a repository evidence token."""
+    token = raw[5:]
+    parsed_line = _repo_line(token)
+    if parsed_line is None:
+        return None
+    token, line = parsed_line
+    token = _repo_symbol(token)
+    if token is None or not _safe_repo_path(token):
         return None
     return Evidence(key, raw, token, line)
+
+
+def _evidence_value(raw: str, key: str = "") -> Evidence | None:
+    """Parse one evidence token."""
+    if raw == "person-decision":
+        return Evidence(key, raw)
+    if raw.startswith("url:"):
+        return _url_evidence(raw, key)
+    if raw.startswith("repo:"):
+        return _repo_evidence(raw, key)
+    return None
 
 
 def _safe_repo_path(raw: str) -> bool:
@@ -386,21 +469,16 @@ def _parse_questions(lines: list[str | None]) -> tuple[list[Entry], list[str]]:
     return _entries(lines, _QUESTION_HEADING, fields, "question")
 
 
-def _parse_spec(text: str) -> tuple[ParsedSpec | None, list[str]]:
-    """Parse a complete specification document."""
-    lines = _strip_fences(text.splitlines())
-    ranges, errors = _section_ranges(lines)
-    metadata, metadata_errors = _metadata(lines)
-    errors.extend(metadata_errors)
-    if errors:
-        return None, errors
-    requirements, found = _entries(
+def _parse_sections(
+    lines: list[str | None], ranges: dict[str, tuple[int, int]]
+) -> tuple[_ParsedSections, list[str]]:
+    """Parse all structured body sections."""
+    requirements, errors = _entries(
         lines[slice(*ranges["Requirements"])],
         _REQ_HEADING,
         {"status": _REQ_STATUS, "behavior": _BEHAVIOR},
         "requirement",
     )
-    errors.extend(found)
     decisions, found = _entries(
         lines[slice(*ranges["Decisions"])],
         _DEC_HEADING,
@@ -420,79 +498,153 @@ def _parse_spec(text: str) -> tuple[ParsedSpec | None, list[str]]:
     errors.extend(found)
     questions, found = _parse_questions(lines[slice(*ranges["Open questions"])])
     errors.extend(found)
-    errors.extend(
-        _content_rules(
-            lines,
-            ranges,
-            metadata,
-            requirements,
-            decisions,
-            evidence,
-            acceptance,
-            questions,
-        )
-    )
-    return ParsedSpec(
-        metadata, requirements, decisions, questions, evidence, acceptance
+    return _ParsedSections(
+        requirements, decisions, questions, evidence, acceptance
     ), errors
 
 
-def _content_rules(
-    lines: list[str | None],
-    ranges: dict[str, tuple[int, int]],
-    metadata: dict[str, str],
-    requirements: list[Entry],
-    decisions: list[Entry],
-    evidence: list[Evidence],
-    acceptance: list[list[int]],
-    questions: list[Entry],
+def _parse_spec(text: str) -> tuple[ParsedSpec | None, list[str]]:
+    """Parse a complete specification document."""
+    lines = _strip_fences(text.splitlines())
+    ranges, errors = _section_ranges(lines)
+    metadata, metadata_errors = _metadata(lines)
+    errors.extend(metadata_errors)
+    if errors:
+        return None, errors
+    sections, found = _parse_sections(lines, ranges)
+    errors.extend(found)
+    errors.extend(_content_rules(lines, ranges, metadata, sections))
+    return ParsedSpec(
+        metadata,
+        sections.requirements,
+        sections.decisions,
+        sections.questions,
+        sections.evidence,
+        sections.acceptance,
+    ), errors
+
+
+def _basic_content_errors(
+    lines: list[str | None], ranges: dict[str, tuple[int, int]]
 ) -> list[str]:
-    """Apply cross-entry and status rules."""
+    """Validate the goal and out-of-scope sections."""
     errors: list[str] = []
     if not any(lines[slice(*ranges["Goal"])]):
         errors.append("Goal is empty")
     out_scope = [line for line in lines[slice(*ranges["Out of scope"])] if line]
     if not out_scope or any(not line.startswith("- ") for line in out_scope):
         errors.append("Out of scope must contain bullets")
-    evidence_values = {entry.key for entry in evidence}
-    errors.extend(_entry_evidence_errors(decisions, evidence_values))
-    errors.extend(_question_evidence_errors(questions, evidence_values))
-    active_requirements = {
-        entry.number for entry in requirements if entry.status == "active"
-    }
-    referenced = {number for group in acceptance for number in group}
-    all_requirements = {entry.number for entry in requirements}
-    errors.extend(
+    return errors
+
+
+def _unknown_acceptance_errors(
+    referenced: set[int], requirements: set[int]
+) -> list[str]:
+    """Report acceptance references to unknown requirements."""
+    return [
         f"acceptance references unknown requirement R{number}"
-        for number in referenced - all_requirements
-    )
-    errors.extend(
+        for number in referenced - requirements
+    ]
+
+
+def _superseded_acceptance_errors(
+    referenced: set[int], active: set[int], requirements: set[int]
+) -> list[str]:
+    """Report acceptance references to superseded requirements."""
+    return [
         f"acceptance references superseded requirement R{number}"
-        for number in referenced - active_requirements
-        if number in all_requirements
-    )
-    errors.extend(
+        for number in referenced - active
+        if number in requirements
+    ]
+
+
+def _repeated_acceptance_errors(acceptance: list[list[int]]) -> list[str]:
+    """Report acceptance criteria with repeated requirements."""
+    return [
         "acceptance criterion repeats a requirement"
         for group in acceptance
         if len(group) != len(set(group))
-    )
-    errors.extend(
+    ]
+
+
+def _missing_acceptance_errors(active: set[int], referenced: set[int]) -> list[str]:
+    """Report active requirements without acceptance criteria."""
+    return [
         f"active requirement R{number} has no acceptance criterion"
-        for number in active_requirements - referenced
-    )
-    errors.extend(_affects_errors(questions, requirements, decisions))
-    errors.extend(_supersession_errors(requirements, decisions))
-    if metadata["Status"] == "Superseded" and metadata["Superseded by"] == "None":
+        for number in active - referenced
+    ]
+
+
+def _acceptance_errors(
+    requirements: list[Entry], acceptance: list[list[int]]
+) -> list[str]:
+    """Validate acceptance references to requirements."""
+    active = {entry.number for entry in requirements if entry.status == "active"}
+    all_requirements = {entry.number for entry in requirements}
+    referenced = {number for group in acceptance for number in group}
+    errors = _unknown_acceptance_errors(referenced, all_requirements)
+    errors.extend(_superseded_acceptance_errors(referenced, active, all_requirements))
+    errors.extend(_repeated_acceptance_errors(acceptance))
+    errors.extend(_missing_acceptance_errors(active, referenced))
+    return errors
+
+
+def _status_content_errors(
+    lines: list[str | None],
+    ranges: dict[str, tuple[int, int]],
+    metadata: dict[str, str],
+) -> list[str]:
+    """Validate replacement and open-question status rules."""
+    errors: list[str] = []
+    status = metadata["Status"]
+    replacement = metadata["Superseded by"]
+    if status == "Superseded" and replacement == "None":
         errors.append("Superseded specification needs a replacement")
-    if metadata["Status"] != "Superseded" and metadata["Superseded by"] != "None":
+    if status != "Superseded" and replacement != "None":
         errors.append("only a Superseded specification can name a replacement")
-    if metadata["Status"] in {"Ready", "Superseded"}:
+    if status in {"Ready", "Superseded"}:
         body = [line for line in lines[slice(*ranges["Open questions"])] if line]
         if body != ["None."]:
             errors.append(
                 "ready and superseded specifications require Open questions: None."
             )
+    return errors
+
+
+def _content_rules(
+    lines: list[str | None],
+    ranges: dict[str, tuple[int, int]],
+    metadata: dict[str, str],
+    sections: _ParsedSections,
+) -> list[str]:
+    """Apply cross-entry and status rules."""
+    errors = _basic_content_errors(lines, ranges)
+    evidence_values = {entry.key for entry in sections.evidence}
+    errors.extend(_entry_evidence_errors(sections.decisions, evidence_values))
+    errors.extend(_question_evidence_errors(sections.questions, evidence_values))
+    errors.extend(_acceptance_errors(sections.requirements, sections.acceptance))
+    errors.extend(
+        _affects_errors(sections.questions, sections.requirements, sections.decisions)
+    )
+    errors.extend(_supersession_errors(sections.requirements, sections.decisions))
+    errors.extend(_status_content_errors(lines, ranges, metadata))
     errors.extend(_draft_marker_errors(lines, ranges))
+    return errors
+
+
+def _question_affects_errors(question: Entry, known: set[str]) -> list[str]:
+    """Validate one question's requirement and decision references."""
+    values = [value.strip() for value in (question.affects or "").split(",")]
+    errors: list[str] = []
+    if any(not re.fullmatch(r"[RD][1-9][0-9]*", value) for value in values):
+        errors.append(f"question {question.number} has invalid Affects")
+    if len(values) != len(set(values)):
+        errors.append(f"question {question.number} repeats an Affects reference")
+    errors.extend(
+        f"question {question.number} has unknown Affects reference {value}"
+        for value in values
+        if value not in known
+    )
     return errors
 
 
@@ -504,18 +656,7 @@ def _affects_errors(
     known.update(f"D{entry.number}" for entry in decisions)
     errors: list[str] = []
     for question in questions:
-        values = [value.strip() for value in (question.affects or "").split(",")]
-        if not values or any(
-            not re.fullmatch(r"[RD][1-9][0-9]*", value) for value in values
-        ):
-            errors.append(f"question {question.number} has invalid Affects")
-        if len(values) != len(set(values)):
-            errors.append(f"question {question.number} repeats an Affects reference")
-        errors.extend(
-            f"question {question.number} has unknown Affects reference {value}"
-            for value in values
-            if value not in known
-        )
+        errors.extend(_question_affects_errors(question, known))
     return errors
 
 
@@ -551,24 +692,36 @@ def _question_evidence_errors(entries: list[Entry], evidence: set[str]) -> list[
     ]
 
 
+def _supersession_entry_error(
+    entry: Entry, numbers: set[int], active: set[int], prefix: str
+) -> str | None:
+    """Validate one superseded entry reference."""
+    if not entry.status.startswith("superseded"):
+        return None
+    target = int(entry.status.rsplit(prefix, 1)[-1])
+    if target > entry.number and target in numbers and target in active:
+        return None
+    return f"{prefix}{entry.number} has invalid supersession"
+
+
+def _entry_supersession_errors(entries: list[Entry], prefix: str) -> list[str]:
+    """Validate supersession references for one entry type."""
+    numbers = {entry.number for entry in entries}
+    active = {entry.number for entry in entries if entry.status == "active"}
+    return [
+        error
+        for entry in entries
+        if (error := _supersession_entry_error(entry, numbers, active, prefix))
+    ]
+
+
 def _supersession_errors(
     requirements: list[Entry], decisions: list[Entry]
 ) -> list[str]:
     """Check superseded entry references."""
-    errors: list[str] = []
-    for entries, prefix in ((requirements, "R"), (decisions, "D")):
-        numbers = {entry.number for entry in entries}
-        active = {entry.number for entry in entries if entry.status == "active"}
-        for entry in entries:
-            if entry.status.startswith("superseded"):
-                target = int(entry.status.rsplit(prefix, 1)[-1])
-                if (
-                    target <= entry.number
-                    or target not in numbers
-                    or target not in active
-                ):
-                    errors.append(f"{prefix}{entry.number} has invalid supersession")
-    return errors
+    return _entry_supersession_errors(requirements, "R") + _entry_supersession_errors(
+        decisions, "D"
+    )
 
 
 def _draft_marker_errors(
@@ -611,33 +764,37 @@ def _working_evidence_path_error(root: Path, path: str) -> str | None:
     return None
 
 
+def _one_evidence_errors(root: Path, evidence: Evidence, mode: str) -> list[str]:
+    """Validate one repository evidence value."""
+    if evidence.path is None:
+        return []
+    if not _safe_repo_path(evidence.path):
+        return [f"unsafe evidence path: {evidence.path}"]
+    if mode == "working":
+        path_error = _working_evidence_path_error(root, evidence.path)
+        if path_error:
+            return [path_error]
+    data = _snapshot_bytes(root, evidence.path, mode)
+    if data is None:
+        return [f"evidence path not found: {evidence.path}"]
+    errors = []
+    is_link = (
+        _index_symlink(root, evidence.path)
+        if mode == "index"
+        else (root / evidence.path).is_symlink()
+    )
+    if is_link:
+        errors.append(f"evidence path is a symlink: {evidence.path}")
+    if evidence.line and evidence.line > len(data.splitlines()):
+        errors.append(f"evidence line is out of range: {evidence.value}")
+    return errors
+
+
 def _evidence_errors(root: Path, values: list[Evidence], mode: str) -> list[str]:
     """Validate repository evidence against one repository snapshot."""
     errors: list[str] = []
     for evidence in values:
-        if evidence.path is None:
-            continue
-        if not _safe_repo_path(evidence.path):
-            errors.append(f"unsafe evidence path: {evidence.path}")
-            continue
-        if mode == "working" and (
-            path_error := _working_evidence_path_error(root, evidence.path)
-        ):
-            errors.append(path_error)
-            continue
-        data = _snapshot_bytes(root, evidence.path, mode)
-        if data is None:
-            errors.append(f"evidence path not found: {evidence.path}")
-            continue
-        is_link = (
-            _index_symlink(root, evidence.path)
-            if mode == "index"
-            else (root / evidence.path).is_symlink()
-        )
-        if is_link:
-            errors.append(f"evidence path is a symlink: {evidence.path}")
-        if evidence.line and evidence.line > len(data.splitlines()):
-            errors.append(f"evidence line is out of range: {evidence.value}")
+        errors.extend(_one_evidence_errors(root, evidence, mode))
     return errors
 
 
@@ -720,13 +877,18 @@ def _path_errors(root: Path, path: Path) -> list[str]:
     return [] if _SLUG.fullmatch(topic) else ["specification topic is not a safe slug"]
 
 
-def _status_errors(root: Path, parsed: ParsedSpec, mode: str) -> list[str]:
-    """Validate the complete replacement specification."""
-    replacement = parsed.metadata["Superseded by"]
-    if replacement == "None":
-        return []
-    snapshot = "index" if mode == "index" else "head" if mode == "ready" else "working"
-    data = _snapshot_bytes(root, replacement, snapshot)
+def _replacement_snapshot(mode: str) -> str:
+    """Select the snapshot used to resolve a replacement specification."""
+    if mode == "index":
+        return "index"
+    if mode == "ready":
+        return "head"
+    return "working"
+
+
+def _replacement_errors(root: Path, replacement: str, mode: str) -> list[str]:
+    """Validate one replacement specification."""
+    data = _snapshot_bytes(root, replacement, _replacement_snapshot(mode))
     if data is None or not _tracked(root, replacement):
         return [f"replacement specification not found: {replacement}"]
     try:
@@ -741,42 +903,81 @@ def _status_errors(root: Path, parsed: ParsedSpec, mode: str) -> list[str]:
     return [f"replacement: {finding}" for finding in findings]
 
 
-def check_file(path: Path, mode: str = "working", nested: bool = False) -> list[str]:
-    """Return findings for one specification file."""
-    root = _repo_root()
+def _status_errors(root: Path, parsed: ParsedSpec, mode: str) -> list[str]:
+    """Validate the complete replacement specification."""
+    replacement = parsed.metadata["Superseded by"]
+    if replacement == "None":
+        return []
+    return _replacement_errors(root, replacement, mode)
+
+
+def _relative_spec_path(root: Path, path: Path) -> tuple[str, list[str]]:
+    """Resolve a specification path and report location findings."""
     findings = _path_errors(root, path)
+    if findings:
+        return "", findings
     candidate = path if path.is_absolute() else root / path
-    relative = candidate.resolve().relative_to(root).as_posix() if not findings else ""
-    data = _snapshot_bytes(root, relative, mode) if relative else None
-    if data is None:
-        return [*findings, "specification cannot be read"]
+    return candidate.resolve().relative_to(root).as_posix(), []
+
+
+def _snapshot_file_errors(root: Path, relative: str, mode: str) -> list[str]:
+    """Validate snapshot and worktree conditions for one specification."""
+    findings: list[str] = []
     if mode == "index" and _index_symlink(root, relative):
         findings.append("specification must not be a symlink")
     if mode == "ready" and (
         not _tracked(root, relative) or not _working_tree_clean(root)
     ):
         findings.append("ready specification requires a clean tracked worktree")
+    return findings
+
+
+def _parse_snapshot(data: bytes) -> tuple[ParsedSpec | None, list[str]]:
+    """Decode and parse one specification snapshot."""
     try:
-        parsed, errors = _parse_spec(data.decode("utf-8"))
+        return _parse_spec(data.decode("utf-8"))
     except UnicodeDecodeError:
-        return [*findings, "specification is not UTF-8"]
-    findings.extend(errors)
-    if parsed is None:
-        return findings
-    topic = Path(relative).stem
-    if parsed.metadata.get("Topic") != topic:
-        findings.append("Topic does not match filename")
-    evidence = parsed.evidence + _inline_evidence(parsed.decisions + parsed.questions)
-    findings.extend(
-        _evidence_errors(root, evidence, "head" if mode == "ready" else mode)
-    )
+        return None, ["specification is not UTF-8"]
+
+
+def _comparison_errors(
+    root: Path,
+    relative: str,
+    parsed: ParsedSpec,
+    data: bytes,
+    mode: str,
+    nested: bool,
+) -> list[str]:
+    """Validate baseline, replacement, and ready-mode comparisons."""
+    findings: list[str] = []
     baseline = _git_bytes(root, "HEAD", relative)
     if baseline != data:
         findings.extend(_baseline_errors(root, relative, parsed, mode))
     if not nested:
         findings.extend(_status_errors(root, parsed, mode))
-    if mode == "ready" and _git_bytes(root, "HEAD", relative) != data:
+    if mode == "ready" and baseline != data:
         findings.append("ready specification differs from HEAD")
+    return findings
+
+
+def check_file(path: Path, mode: str = "working", nested: bool = False) -> list[str]:
+    """Return findings for one specification file."""
+    root = _repo_root()
+    relative, findings = _relative_spec_path(root, path)
+    data = _snapshot_bytes(root, relative, mode) if relative else None
+    if data is None:
+        return [*findings, "specification cannot be read"]
+    findings.extend(_snapshot_file_errors(root, relative, mode))
+    parsed, errors = _parse_snapshot(data)
+    findings.extend(errors)
+    if parsed is None:
+        return findings
+    if parsed.metadata.get("Topic") != Path(relative).stem:
+        findings.append("Topic does not match filename")
+    evidence = parsed.evidence + _inline_evidence(parsed.decisions + parsed.questions)
+    evidence_mode = "head" if mode == "ready" else mode
+    findings.extend(_evidence_errors(root, evidence, evidence_mode))
+    findings.extend(_comparison_errors(root, relative, parsed, data, mode, nested))
     return findings
 
 
@@ -813,6 +1014,27 @@ def _print_findings(findings: list[str]) -> int:
     return 2
 
 
+def _all_findings() -> list[str]:
+    """Run the gate for every tracked specification."""
+    return [
+        f"{path}: {finding}"
+        for path in _tracked_specs(_repo_root())
+        for finding in check_file(path)
+    ]
+
+
+def _selected_findings(args: argparse.Namespace) -> list[str]:
+    """Run the gate for the selected specification."""
+    selected = args.check or args.ready or args.check_index
+    mode = "ready" if args.ready else "index" if args.check_index else "working"
+    return check_file(Path(selected), mode)
+
+
+def _run_gate(args: argparse.Namespace) -> list[str]:
+    """Run one selected specification gate mode."""
+    return _all_findings() if args.check_all else _selected_findings(args)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the selected specification gate."""
     try:
@@ -820,16 +1042,7 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return 0 if exc.code == 0 else 1
     try:
-        if args.check_all:
-            findings = [
-                f"{path}: {finding}"
-                for path in _tracked_specs(_repo_root())
-                for finding in check_file(path)
-            ]
-        else:
-            selected = args.check or args.ready or args.check_index
-            mode = "ready" if args.ready else "index" if args.check_index else "working"
-            findings = check_file(Path(selected), mode)
+        findings = _run_gate(args)
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"spec-check: gate error: {exc}", file=sys.stderr)
         return 1
