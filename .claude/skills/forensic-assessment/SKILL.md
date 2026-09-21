@@ -1,9 +1,13 @@
 ---
 name: forensic-assessment
-description: |
-  TRIGGER: deep assessment of an existing document, spec, config, schema, or instruction file for correctness, completeness, and internal/external consistency — "is this correct", "is this production-ready", "find the gaps in this doc", "review this config against reality", "are these findings valid".
-  EXCLUDE: code-diff review (use python-quality / test-design); adversarial idea-hardening of a proposal (use `/devils-advocate`); bug hunting in running code (use `/bug-bash`); requirement extraction from messy tickets.
-  SIGNAL: the subject is an existing artifact — a document, spec, config, schema, or instruction file — not a code diff, not an idea being pressure-tested, not a bug report.
+description: >-
+  Six-dimension rubric to assess an existing document, spec, config, schema, or instruction
+  file: factual correctness, completeness, internal and external consistency,
+  production-readiness, standards compliance. Use for a single-pass check in chat: "is this
+  correct", "is this production-ready", "find the gaps in this doc", "check this config against
+  reality", "are these findings valid". /forensic-review runs the parallel version. Not for:
+  code diffs (python-quality, test-design); pressure-testing an idea (/devils-advocate); bugs in
+  running code (/bug-bash).
 ---
 
 # Forensic Assessment

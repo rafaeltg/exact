@@ -1,9 +1,12 @@
 ---
 name: python-quality
-description: |
-  TRIGGER: writing, refactoring, or reviewing Python — implement a module/node/tool, "review this diff", PR audit, bug-hunt, "what's wrong with this code"; design-quality questions on Python or on a proposed structure — SOLID, Clean Code, coupling, cohesion, Tell Don't Ask, Law of Demeter, composition vs inheritance, "this class does too much", "should I refactor this", "is this too coupled", "make this maintainable", design audits of a PR, module, or architecture proposal.
-  EXCLUDE: test-only work owned by test-design (still load test-design whenever tests are written or reviewed); non-Python surfaces.
-  SIGNAL: Python authoring, or a quality or design question on existing Python or a described structure.
+description: >-
+  Authoritative rules to implement and review Python in this repo, including design quality:
+  SOLID, Clean Code, coupling and cohesion, Tell Don't Ask, Law of Demeter, composition over
+  inheritance. Use when writing, refactoring, or reviewing Python code, a diff, or a proposed
+  structure: "review this diff", "what's wrong with this code", "this class does too much",
+  "should I refactor this". Also load test-design when tests are in scope. Not for non-Python
+  files.
 ---
 
 # Python Quality

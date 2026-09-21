@@ -1,9 +1,10 @@
 ---
 name: phase-slicing
-description: |
-  TRIGGER: breaking an implementation into phases — "how should I split this", "what order should I build this in", "break this into milestones", phase ordering, vertical slicing, phase-safe boundaries, cross-phase contracts.
-  EXCLUDE: task-level decomposition inside a phase (use task-structuring); requirement extraction from a messy ticket or thread.
-  SIGNAL: drawing the boundaries between phases that group files and declare interfaces.
+description: >-
+  Draws the boundaries between implementation phases: vertical slices, phase order, the files
+  each phase groups, and the interfaces between phases. Use for "how should I split this", "what
+  order should I build this in", "break this into milestones". /plan loads it. Not for: tasks
+  inside a phase (task-structuring); turning a rough request into requirements (/spec).
 ---
 
 # Phase Slicing Expert

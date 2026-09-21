@@ -1,9 +1,13 @@
 ---
 name: fix-findings
-description: |
-  TRIGGER: a DEFECT report needs fixing — "fix all findings in <file>", "address these findings", "work through this audit"; sources: .claude/artifacts/bug-bash/*, .claude/artifacts/review-pr/* (dry-run reports), or pasted audit output whose findings each cite a concrete file and a verifiable defect.
-  EXCLUDE: producing the findings (use /bug-bash or /review-pr dry-run); advisory design findings, where the fix is a judgment call rather than a correction (use harden-doc for /devils-advocate reports); forensic-review reports (that command owns its own gated Phase 7 patch plan — ask it to run Phase 7 instead of routing here); brainstorm reports (ideas, not findings); anything resolved by replying on live GitHub PR threads (use /resolve-pr — even when the same comments are also pasted into chat); a question ABOUT a report ("are these findings valid?" is /forensic-review's meta_review variant, not a fix request).
-  SIGNAL: every finding names a place in the code and asserts something checkably wrong there, and the user asked for fixes; output is a verified patch plan plus the applied fixes, uncommitted.
+description: >-
+  Re-verifies each finding of a defect report against the current code, writes a patch plan, and
+  applies the fixes uncommitted. Use when the user asks to fix findings that each cite a file
+  and a checkable defect: .claude/artifacts/bug-bash/*, .claude/artifacts/review-pr/* dry-run
+  reports, or pasted audit output. Not for: producing findings (/bug-bash, /review-pr);
+  arguments that an idea is unsound (harden-doc); forensic-review reports (its own Phase 7);
+  brainstorm reports; GitHub PR review comments, even when pasted (/resolve-pr); asking whether
+  findings are valid (/forensic-review).
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(date*), Bash(mkdir*), Bash(git status*), Bash(git diff*), Bash(git merge-base*), Bash(make test*), Bash(make workflows-check*), Bash(rtk proxy make*)
 ---
 

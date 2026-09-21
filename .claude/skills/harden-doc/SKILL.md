@@ -1,9 +1,12 @@
 ---
 name: harden-doc
-description: |
-  TRIGGER: an advisory review of a document needs acting on — "act on the devils-advocate report", "work through this hardening report", "address the review of <doc>"; sources: .claude/artifacts/devils-advocate/*, or any review whose findings argue that an idea is unsound rather than that a fact is wrong.
-  EXCLUDE: defect reports where each finding cites a checkable error in a named place (use fix-findings); forensic-review reports (that command owns its own gated Phase 7 patch plan); producing the review (use /devils-advocate); brainstorm reports (ideas, not findings — feed the ★ pick into /devils-advocate instead).
-  SIGNAL: the findings are arguments, not defects — each one needs a human decision before anything changes, and rejecting one is as valid an outcome as accepting it.
+description: >-
+  Gets a user decision on each finding of an advisory document review, then edits the document
+  to carry the accepted ones, uncommitted. Use when acting on a
+  .claude/artifacts/devils-advocate/* report, or any review whose findings argue that an idea is
+  unsound, not that a fact is wrong. Not for: findings that cite a checkable error
+  (fix-findings); forensic-review reports (its own Phase 7); producing the review
+  (/devils-advocate); brainstorm reports (feed the ★ pick to /devils-advocate).
 ---
 
 # Harden Doc

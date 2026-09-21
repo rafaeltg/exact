@@ -1,9 +1,10 @@
 ---
 name: task-structuring
-description: |
-  TRIGGER: breaking a phase or feature into concrete implementation tasks — "break this down", "what should I work on first", "give me ordered subtasks", expanding a ticket or phase into single-concern tasks with Do / Files / Verify fields.
-  EXCLUDE: drawing phase boundaries (use phase-slicing); requirement extraction from a messy ticket or thread.
-  SIGNAL: decomposing the inside of a phase into committable tasks that pair code with tests.
+description: >-
+  Breaks one phase or feature into ordered, single-concern, committable tasks with Do / Files /
+  Verify fields, each pairing code with tests. Use for "break this down", "what should I work on
+  first", "give me ordered subtasks". /plan loads it. Not for: phase boundaries (phase-slicing);
+  turning a rough request into requirements (/spec).
 ---
 
 # Task Structuring Expert
