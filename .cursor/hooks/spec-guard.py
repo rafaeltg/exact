@@ -852,7 +852,8 @@ def _baseline_errors(
         new_ids = _stable_ids(new)
         if new_ids[: len(old_ids)] != old_ids:
             found.append(f"existing {label} IDs changed")
-    if current.metadata["Revision"] <= baseline.metadata["Revision"] and mode != "head":
+    current_revision = int(current.metadata["Revision"])
+    if current_revision <= int(baseline.metadata["Revision"]) and mode != "head":
         found.append("Revision did not increase over HEAD")
     return found
 

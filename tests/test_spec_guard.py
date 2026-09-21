@@ -197,3 +197,12 @@ def test_question_affects_references_are_validated(repo: Path) -> None:
     )
     path.write_text(changed, encoding="utf-8")
     assert any("unknown Affects" in finding for finding in guard.check_file(path))
+
+
+def test_revision_increase_compares_numbers(repo: Path) -> None:
+    """A revision bump from 9 to 10 is an increase, not a lexical decrease."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC.replace("Revision: 1", "Revision: 9"), encoding="utf-8")
+    _git(repo, "commit", "-qam", "revision 9")
+    spec.write_text(_SPEC.replace("Revision: 1", "Revision: 10"), encoding="utf-8")
+    assert guard.check_file(spec) == []
