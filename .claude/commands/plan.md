@@ -1,134 +1,91 @@
 ---
 description: >
-  Write .claude/artifacts/plan/<topic>/plan.md — a lean, phased, task-level plan that an LLM executes task by
-  task. A fresh agent interrogates the spec first. Every behaviour-affecting gap is resolved
-  before planning starts. Each resolution lands in assumptions.md. A second fresh agent then
-  grounds every path, count and command against the tree. Writes only under .claude/artifacts/plan/<topic>/.
-  Never edits src/.
-argument-hint: "<topic-slug> <spec path or spec text> [--assume \"<decision>\"]..."
-allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Skill, Agent, Task, SendMessage, Bash(git check-ignore*), Bash(date*), Bash(mkdir*)
+  Write .claude/artifacts/plan/<topic>/plan.md — a canonical, phased, task-level plan that an LLM
+  executes task by task. The only input is the Ready specification docs/specs/<topic>.md. Takes no
+  product decision. A fresh agent reviews the plan against the tree before it is approved.
+argument-hint: "<topic-slug>"
+allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Agent, Task, SendMessage, Skill, Bash(make plan-check*), Bash(make spec-check-ready*), Bash(git status*), Bash(git rev-parse*), Bash(git ls-files*), Bash(shasum*), Bash(date*), Bash(mkdir*)
 disable-model-invocation: true
 ---
 
 You write a plan that an LLM executes task by task. The plan is the contract. The executor does
-not read the spec, and it does not read this conversation.
+not read the specification, and it does not read this conversation.
 
-**Two skills own the method.** `phase-slicing` owns where the phase lines go.
-`task-structuring` owns what a task and a Verify look like. This command owns the
-interrogation gate, the output contract, and the grounding review. **Never restate a skill rule
-here.** Load the skill at the phase that needs it.
+**The only specification is `docs/specs/$1.md`.** Do not search for another. Do not accept a
+free-text product decision. Do not create `assumptions.md`, `gaps.md`, or `contract.md`.
+**When a product decision is missing, STOP.** Print the requirement and the repository evidence,
+and send the user to `/spec $1`. `/spec` owns every behavior decision.
 
-Use `/plan` for work of more than one phase. Such work spans sessions. Plan mode stays correct
-for a single-PR change inside one session.
+**Two skills own the method.** `phase-slicing` owns where the phase lines go. `task-structuring`
+owns what a task and a `Verify` look like. This command owns the gates, the output contract, and
+the review. **Never re-explain a skill's method here.** The output shape below repeats the
+field layout only, so the document format sits in one place. Load each skill at the phase that
+needs it.
 
-## Phase 0 — Parse, pin, refuse to overwrite
+`.cursor/hooks/plan-guard.py` owns the validation rules. `make plan-check` is authoritative. The
+lists below help you write; they never replace a run of the gate.
 
-1. Parse `$ARGUMENTS` into three parts:
-   - `<topic-slug>` — the first token.
-   - The spec — a path to a file, or free text.
-   - Zero or more `--assume "<decision>"` entries. These are optional. Each pre-answers a gap.
-2. **Both the topic slug and the spec are required. STOP when either is absent.** Print what is
-   missing. **Never infer a spec.** Never search for one. Never treat an empty argument as a
-   request to look around.
-3. STOP when the spec is a path that does not exist. Print the path.
-4. **Validate `<topic-slug>`. STOP when it fails.** The slug must match
-   `^[a-z0-9][a-z0-9._-]*$`. That pattern is one path component. It admits no `/` and no leading
-   dot. Print the slug on a failure. An invalid slug can resolve outside `.claude/artifacts/plan/`. This
-   command then writes over source files. The steps below write this value `<topic>`.
-5. Run `mkdir -p .claude/artifacts/plan/<topic>`.
-6. Run `git check-ignore -q .claude/artifacts/`. The trailing slash is required. `.claude/artifacts/`
-   is gitignored on purpose, so a hit is the expected result. On a miss, warn that the directory
-   is tracked, and ask whether to continue. A plan is a working artifact. It does not go into the
-   repository.
-7. **Pin the plan path.** `<plan-path>` is `.claude/artifacts/plan/<topic>/plan.md`. When that file exists,
-   ask: resume and fill the gaps, or write `.claude/artifacts/plan/<topic>/plan-<YYYYMMDD>.md`. Set
-   `<plan-path>` to the answer. On the dated answer, STOP when that dated file also exists.
-   Phases 5, 6 and 7 use `<plan-path>` and no other name. `assumptions.md` is append-only.
-   Never renumber an entry. Never rewrite one. `contract.md` and `gaps.md` are regenerated on
-   every run.
+## Phase 0 — Gate the inputs
 
-## Phase 1 — Interrogate the spec
+1. **Validate `$1` against `^[a-z0-9][a-z0-9._-]*$`. STOP when it fails.** Print the slug.
+2. STOP when `docs/specs/$1.md` does not exist. Print the path.
+3. **STOP unless the specification carries the line `Status: Ready`.** Check the line yourself.
+   No gate checks it: a committed `Status: Draft` document passes `spec-check-ready` and
+   `plan-check`.
+4. Run `make spec-check-ready FILE=docs/specs/$1.md`. **STOP on any finding.** Print the findings.
+   The gate needs a tracked specification, a clean tracked worktree, and no difference from
+   `HEAD`.
+5. Run `git status --porcelain=v1 --untracked-files=all`. **The output must be empty.** STOP when
+   it is not. A dirty tree breaks the `Repository commit` metadata the plan records.
+6. **Inspect `.claude/artifacts/plan/$1/` before you write anything.**
+   - It does not exist: go on.
+   - It exists without `.spec-plan-v1`, or the marker holds other bytes: **STOP.** The directory
+     holds an older plan format. Ask the user to move it. Never overwrite it.
+   - It holds a valid marker and a `plan.md` whose metadata does not match the current
+     specification: STOP. Ask whether to replace the plan.
+7. Only now write `.claude/artifacts/plan/$1/.spec-plan-v1`. It holds exactly `version=1` and a
+   final newline.
 
-Send ONE `spec-interrogator` subagent (the `Agent` tool; some harness versions name it `Task`).
-It runs with fresh context. Its own definition governs how it interrogates. Do not re-instruct it
-beyond the inputs.
+## Phase 1 — Read the contract
 
-Give it five things:
+1. Read `docs/specs/$1.md` in full.
+2. The active `D<n>` identifiers are the only decisions a task may cite. A superseded decision is
+   not citable.
+3. The specification names are immutable. Use them verbatim.
+4. Read `AGENTS.md`, and the code each requirement touches.
 
-1. The spec — inline text, or the path.
-2. The `--assume` entries, verbatim.
-3. `.claude/artifacts/plan/<topic>/decisions.md`, when that exact path exists. Name no other document. Do not
-   look for one.
-4. `.claude/artifacts/plan/<topic>/assumptions.md`, when that exact path exists. A resumed run must not re-ask
-   a settled gap.
-5. The directories the spec touches, when you already know them.
-
-It returns the contract restatement and the gap list. It marks each gap `open`, or `covered by`
-a pre-answer. Spec-given names from its contract restatement are immutable for the rest of the
-run.
-
-**Write both artifacts to disk. The agent holds no `Write` grant, so you write them.** Put the
-contract restatement in `.claude/artifacts/plan/<topic>/contract.md`. Put the gap list in
-`.claude/artifacts/plan/<topic>/gaps.md`. Phase 6 audits the plan against both files. An artifact that stays in
-this conversation is invisible to a fresh reviewer.
-
-Then reconcile the `open` gaps against **this conversation** only. You do this yourself. The
-agent cannot see the conversation. A gap is resolved only when an explicit answer covers it.
-Update `gaps.md` with each status you change.
-
-## Phase 2 — Resolve the open gaps (hard gate)
-
-1. Ask about each `open` behaviour-affecting gap with `AskUserQuestion`:
-   - One fact per question.
-   - At most 4 questions per call, and at most 4 options per question.
-   - Put the agent's default first. Label it `(Recommended)`.
-   - Repeat the calls until no behaviour-affecting gap is open.
-2. Never substitute a default the user did not pick. When `AskUserQuestion` is unavailable, print
-   the numbered gap list with the defaults, and **STOP**.
-3. Write an entry for **every** gap, not only the ones you asked about. A gap the interrogator
-   marked `covered by`, and a gap the conversation settled, each get an entry too. Write them to
-   `.claude/artifacts/plan/<topic>/assumptions.md`:
-
-```markdown
-## A<n> — <the decision as one declarative sentence>
-- **Gap:** <the `Q<n>` id from gaps.md>
-- **Question:** <the question as asked>
-- **Answer:** <what the user picked, verbatim. For a gap nobody was asked: the value applied>
-- **Source:** user-answer | default-approved | pre-answered (--assume) | from-decisions
-  | from-conversation | default-applied
-- **Impact:** <one line — what this fixes in the implementation>
-- **Evidence:** <symbol, file, or `decisions.md § N`, or `none — user decision`>
-- **Date:** <YYYY-MM-DD>
-```
-
-4. Record a cosmetic gap the same way, with `Source: default-applied`. Do not ask about it.
-5. **Do not enter Phase 3 while a behaviour-affecting gap is open.**
-
-Rule 5 always wins. The following is advice, not a gate. A run that opens more than about 12
-questions suggests the spec is not ready. Say so, and offer the gap list instead of a plan. Go on
-when the user wants the plan anyway.
-
-## Phase 3 — Draw the phases
+## Phase 2 — Draw the phases
 
 1. Invoke `Skill(skill="phase-slicing")`. Follow it. Do not repeat its rules here.
-2. Produce the phase list, the cross-phase contracts, and the file-ownership map. Work from
-   `contract.md`. Read the code when you must get a signature the contract does not carry.
-3. The skill sends you back when a cross-phase signature will not write. Go back to Phase 2, and
-   ask about it there.
+2. Produce the phase list, the cross-phase contracts, and the file-ownership map.
+3. **A path belongs to one phase only.** The gate rejects a reused owned path, and it rejects a
+   task file outside its own phase's ownership.
+4. The skill sends you back when a cross-phase signature will not write. A signature the
+   specification does not fix is a product decision. Go to `/spec`.
 
-## Phase 4 — Decompose into tasks
+## Phase 3 — Decompose into tasks
 
 1. Invoke `Skill(skill="task-structuring")`. Follow it. Do not repeat its rules here.
-2. Produce Do, Files, and Verify for every task. Produce the acceptance criteria for every phase.
-3. The skill sends you back to the phase boundary when a task will not decompose. Go back to
-   Phase 3, and redraw it there.
+2. Produce `Decisions`, `Do`, `Files`, `Provides`, and `Verify` for every task.
+3. The skill sends you back to the phase boundary when a task will not decompose. Go to Phase 2,
+   and redraw it there.
 
-## Phase 5 — Write the draft
+## Phase 4 — Write the plan
 
-Write `<plan-path>` in ASD-STE100 Simplified Technical English. Keep instruction
-sentences to 20 words or fewer. Keep descriptive sentences to 25 or fewer.
+Write only `.claude/artifacts/plan/$1/plan.md`. Write it in ASD-STE100 Simplified Technical
+English. Keep instruction sentences to 20 words or fewer. Keep descriptive sentences to 25 or
+fewer.
 
-### The plan is machine input. Write it lean.
+Compute the metadata now:
+
+- `Spec SHA-256` — `shasum -a 256 docs/specs/$1.md`, over the raw bytes.
+- `Repository commit` — `git rev-parse HEAD`, all 40 characters.
+- `Date` — today, as `YYYY-MM-DD`.
+
+Recompute the digest and the commit ID when anything commits during the run. The gate
+compares both live.
+
+### The plan is machine input. Write it lean
 
 An LLM executes this document. It reads a task, and it acts. It does not need to be persuaded,
 introduced, or reminded.
@@ -139,116 +96,161 @@ Delete these on sight:
 
 - Rationale, background, and motivation. Why the work matters changes no keystroke.
 - Benefits, goals prose, and summaries of what an earlier phase did.
-- Restated decisions. Cite `A<n>`. Never repeat the content of an entry.
+- Restated decisions. Cite `D<n>`. Never repeat the text of a decision.
 - Restated rules from `AGENTS.md` or from either skill. Cite the file.
 - "Note that", "it is important to", "keep in mind", "as mentioned above".
 - Alternatives you considered and rejected.
 - Any sentence that would still be true if the task were dropped.
 
-Write fields, not paragraphs. `task-structuring` owns what a Do field carries. Add
-nothing beyond it.
-
 ### Output shape
 
 ```markdown
-# <Topic> — plan
-Spec: <path or "inline">   Assumptions: ./assumptions.md   Date: <YYYY-MM-DD>
+# <title> — plan
 
-## 1. Assumptions in force
-<ids only — "A1-A6; A4 governs every timestamp comparison". Never restate an entry.>
+Spec: docs/specs/<topic>.md
+Spec revision: <positive integer>
+Spec SHA-256: <64 lowercase hexadecimal characters>
+Repository commit: <40-character HEAD ID>
+Date: <YYYY-MM-DD>
 
-## 2. Scope boundaries
-<Per phase-slicing, "Scope boundaries at the structure level".>
+## Scope boundaries
 
-## 3. Phases
-### Phase N — <name>
-**Goal:** · **Stop-after-this-phase:** · **Owns files:** · **Provides (cross-phase contract):**
-**Acceptance criteria:** <targeted bullets>
-- [ ] Full integration gate passes: `<command>`
+- <specific boundary>
 
-## 4. Tasks
-### Task N.n — <title>
-**Do:** · **Files:** create: … | modify: … · **Verify:** `<command>`
+## Phases
+
+### Phase 1 — <title>
+**Goal:** <observable result>
+**Stop condition:** <safe-to-ship state>
+**Owns files:** `path`, `path`
+**Provides:** <cross-phase contract or None>
+**Acceptance criteria:**
+- [ ] <phase behavior>
+- [ ] Full integration gate passes: `make check`
+
+## Tasks
+
+### Task 1.1 — <title>
+**Decisions:** D1, D2
+**Do:** <complete implementation instruction>
+**Files:** create: `path` | modify: `path`
+**Provides:** test: `tests/test_x.py::test_name` | make-target: `target`
+**Verify:** `make test TEST=tests/test_x.py K=test_name`
 ```
 
-`·` separates the fields in the shape above. Write each field on its own line.
-`make plan-check` anchors on a line that starts with the field name, so fields packed onto one
-line parse as zero references and the check reports nothing.
+The three sections appear once, in that order. `task-structuring` requires one field per line.
+The gate reads a packed line as one long field, and reports the task as missing the others.
 
-Write no implementation code. Write no commentary outside the document.
+### What the two skills do not tell you
+
+`phase-slicing` owns the phase block. `task-structuring` owns the task fields. These rules come
+from the gate, and neither skill carries them:
+
+- The metadata block sits under the title, before the first section.
+- **Every task path appears verbatim in its own phase's `Owns files`.** The gate compares exact
+  strings. A phase that owns `src/exact/` does not own `src/exact/graph.py`. List each file.
+- A `modify:` path exists in the baseline, or an earlier task creates it. A `create:` path does
+  neither.
+- `Files` and `Provides` separate their kinds with ` | `. Each kind appears once. Paths are
+  unique inside a task.
+- A provided test is `tests/<file>.py::test_<name>`. A provided Make target is a bare name. **The
+  file that holds it must appear in the same task's `Files`,** and a Make target needs `Makefile`
+  there.
+- `VERBOSE=` accepts `1`. `FILE=` accepts a repository-relative path.
+- `Decisions` cites active `D<n>` identifiers from the specification. A superseded or unknown
+  identifier fails the gate.
+- `TBD`, `TODO`, "to be decided", and a `<!-- tasks: … -->` placeholder are all rejected.
 
 ### Write it in steps. Never in one call
 
 One large write degrades the end of the document. The last tasks lose fields and become vague.
 
-1. Count the phases. Call that number `N`.
-2. First, `Write` the skeleton. It carries the title, the metadata line, § 1, § 2 and § 3.
-   § 3 carries every phase block in full. § 4 carries the heading and `N` placeholder lines only.
-   A placeholder line is `<!-- tasks: phase N -->`, with the phase number in place of `N`.
-3. Then one `Edit` per phase. Each `Edit` replaces one placeholder line. It writes the
-   `### Task N.n` blocks of that phase only.
-4. Split a phase of more than 6 tasks into two `Edit` calls. Keep the placeholder line at the end
-   of the first `Edit`.
-5. Never rewrite a part you
-6. Run `make plan-check FILE=<plan-path>`. Do not enter Phase 6 while it reports a finding.
-   The guard resolves every `Files:` path, `TEST=` path, `K=` name and `make` target the plan
-   claims. **Known limit:** `create:` paths exist once execution starts, so a plan edited after
-   its Phase 1 has landed reports those paths. The guard reports; it never denies. Read each
-   report line against execution state.
+1. `Write` the head: the title, the metadata, `## Scope boundaries`, `## Phases` with every phase
+   block complete, and `## Tasks` with the tasks of Phase 1 only.
+2. Then one `Edit` per remaining phase. Each `Edit` appends that phase's `### Task N.n` blocks
+   after the last task already written.
+3. Split a phase of more than six tasks into two `Edit` calls.
+4. **Never write a placeholder line.** The gate rejects one.
+5. The post-write hook runs the full gate after each step. Before the last phase lands, it reports
+   `phase N has no task` and `last phase has no task`. Those two findings are expected. Every
+   other finding is real. Repair it before the next `Edit`.
 
-## Phase 6 — Grounding review (hard gate)
+### Validate
 
-A plan that asserts a false fact about the tree ships a bug that no gate catches. Audit the plan
-before anyone executes it.
+Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md`. **Repair every finding before the
+review.** The gate resolves every `Files` path, `TEST=` path, `K=` name, `Provides` value,
+`Decisions` identifier, and `make` target the plan claims. It checks owned paths for syntax and
+reuse only.
 
-1. Send ONE `fs-readonly-worker` subagent (the `Agent` tool; some harness versions name it
-   `Task`) with fresh context. The agent holds no Bash and no web tools, so it verifies by
-   reading this tree only.
+## Phase 5 — Independent review (hard gate)
 
-   Give it four paths: `<plan-path>`, `assumptions.md`, `contract.md`, and `gaps.md`. Give it the
-   checklist below. **Copy the delete-on-sight list from Phase 5 into the prompt, and copy the
-   20-word and 25-word STE limits.** A reviewer without the criteria applies its own taste.
+A plan that asserts a false fact about the tree ships a bug that no gate catches.
+
+1. Send ONE `fs-readonly-worker` subagent with fresh context. It holds no Bash and no web tools,
+   so it verifies by reading this tree only.
+2. Give it two paths: the plan, and `docs/specs/$1.md`. **Copy the delete-on-sight list and the
+   20-word and 25-word limits from Phase 4 into the prompt.** A reviewer without the criteria
+   applies its own taste.
 
    | Check | Method |
    |---|---|
-   | Each `Files: modify:` path exists | `Glob` — also machine-checked by `make plan-check` |
+   | Each `Files: modify:` path exists | `Glob` |
    | Each `Files: create:` path does not exist | `Glob` |
-   | Each symbol a Do field names exists | `Grep` for the definition |
-   | Each call-site or caller count | `Grep` for the name. **Never `make lint` output** — it does not report call sites |
-   | Each `make` target in a Verify exists | `Grep` the `Makefile` for the target — also machine-checked by `make plan-check` |
-   | Both skill Author checklists pass | Read the two `SKILL.md` files |
-   | Every name matches `contract.md` | Read `contract.md` |
-   | Every behaviour-affecting gap in `gaps.md` has an `A<n>` entry | Read `gaps.md` and `assumptions.md` |
+   | Each symbol a `Do` field names exists | `Grep` for the definition |
+   | Each call-site or caller count | `Grep` for the name |
+   | Each `make` target in a `Verify` exists | `Grep` the `Makefile` |
+   | Every name matches the specification | Read `docs/specs/$1.md` |
+   | Every active requirement has a task | Read the specification and the plan |
+   | Every cited `D<n>` is active | Read `## Decisions` |
+   | No task takes a decision the specification did not take | Read both documents |
    | Every line changes what the executor does | Apply the delete-on-sight list. Quote each line that fails |
    | STE compliance | 20 words for an instruction, 25 for a description |
-   | No task placeholder remains | `Grep` the plan for `<!-- tasks: phase` |
 
-2. Require this report format: `task id → claim → evidence → blocking | non-blocking`. **Every
-   row above is blocking.** A leanness finding and an STE finding block the same as a wrong path.
-3. Apply each fix with `Edit`. Never rewrite the plan. Confirm the fixes once with
-   `SendMessage` to the same agent. Send a new agent instead when that agent no longer
-   answers.
-4. **Refuse to finalize while a blocking finding is open.** An audit after execution is too late.
+3. Require this row format: `<task-or-section> → <claim> → <repository evidence> → blocking | non-blocking`.
+   **Every row in the table above is blocking.** A leanness finding blocks the same as a wrong
+   path.
+4. Apply each fix with `Edit`. Never rewrite the plan. Run `make plan-check` again after every
+   repair.
+5. **STOP instead of claiming approval when no fresh reviewer is available.** A self-review in
+   this context is not a review.
 
-## Phase 7 — Report
+Write `.claude/artifacts/plan/$1/review.md` only after the last repair. It carries these exact
+metadata lines, plus one row per finding that is still open:
 
-1. Print the four file paths. Print the phase count and the task count. Print the assumption-id
-   range, and the count of findings fixed in Phase 6.
-2. State the possible next steps. **Do not run them. Do not stage anything. Do not commit. Do not
-   open a pull request.**
-   - "Run `/forensic-review <plan-path>`. A plan is not trustworthy until
-     something adversarial has read it."
-   - "Review `.claude/artifacts/plan/<topic>/` before any code. The directory is gitignored. Copy
-     what the repository must keep into `docs/`."
+```text
+Reviewer: <identity or invocation ID>
+Plan SHA-256: <64 lowercase hexadecimal characters>
+Date: <YYYY-MM-DD>
+Status: Blocking | Approved
+```
+
+- `Plan SHA-256` is the digest of the current `plan.md` bytes. **Any later edit to the plan breaks
+  it.** Repair, then re-review, then rewrite `review.md`.
+- **A repaired finding is not a row.** The gate rejects any row that ends in `→ blocking`, and
+  it does not read a repair note. An approved review holds `non-blocking` rows only.
+- Set `Status: Approved` only when no blocking finding remains open. While one is open, write
+  `Status: Blocking` with its rows, and STOP. `make plan-check` fails on it, and that is correct.
+- The gate reads `review.md` whenever it exists. A stale or blocking review fails `make
+  plan-check`.
+
+Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md` one last time. It must be clean.
+
+## Phase 6 — Report
+
+1. Print the plan path, the phase count, the task count, the review status, and the count of
+   findings repaired.
+2. State the possible next steps. **Do not run them. Do not stage. Do not commit. Do not open a
+   pull request.**
+   - "Review `.claude/artifacts/plan/$1/` before any code. The directory is gitignored."
    - "Execute Phase 1 of the plan."
 
 ## Remember
 
-- You write **only** under `.claude/artifacts/plan/<topic>/`. You never create or edit a file under `src/`.
-- You write four files: `contract.md`, `gaps.md`, `assumptions.md`, and `<plan-path>`.
-- `assumptions.md` is the single home of every decision the spec did not make. The plan cites the
-  ids. The plan never restates an entry.
-- The two skills own the method. This file owns the gate, the contract, and the review.
-- A gap you answered for the user is a defect. Ask.
+- You write **three** files, all under `.claude/artifacts/plan/$1/`: `.spec-plan-v1`, `plan.md`,
+  and `review.md`. You never create or edit a file under `src/`.
+- The specification is the only source of a product decision. A decision you took is a defect.
+  Go to `/spec`.
+- The two skills own the method. This file owns the gates, the contract, and the review.
 - A line that does not change what the executor does is a defect. Delete it.
-- One `Write` for the whole plan is a defect. Write the skeleton, then one phase per `Edit`.
+- One `Write` for the whole plan is a defect. Write the head, then one `Edit` per phase.
+- A `review.md` written before the last repair is a defect. The digest proves it.
