@@ -4,7 +4,7 @@
 **Spec impact:** Runtime, CLI, prompts; hard Exa filters also change tools — update `docs/spec.md` and `docs/architecture.md` in the same change  
 **Out of scope:** Raising spend ceilings; model swaps; free-form system prompts; composite `--profile` presets; JSON/TOML pref files; HTTP API / web UI; Firecrawl / PDF / paywall; new retrieval vendors
 
-**Related:** [effort-levels.md](effort-levels.md) owns depth and spend. This plan owns taste and retrieval shape under those ceilings.
+**Related:** `effort-levels.md` (removed; `git show 3fae7b8:docs/plans/effort-levels.md`) owned depth and spend. This plan owns taste and retrieval shape under those ceilings.
 
 ---
 
