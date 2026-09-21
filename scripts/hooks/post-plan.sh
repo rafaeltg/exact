@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# scripts/hooks/post-plan.sh — PostToolUse(Write|Edit) adapter: plan-reference
-# gate for a write that lands under `.claude/artifacts/plan/`.
+# scripts/hooks/post-plan.sh — PostToolUse(Write|Edit) adapter: plan gate
+# for a canonical write under `.claude/artifacts/plan/<topic>/plan.md`.
 #
-# `/plan` Phase 6 sends an `fs-readonly-worker` to verify that every path,
-# test name and `make` target the plan claims exists. That agent holds no Bash
-# and checks by Glob and Grep. A program does the mechanical rows faster and
-# never skips one, so this hook runs them on every plan write — before the
-# reviewer, not after.
+# The explicit `make plan-check` command is authoritative. This adapter only
+# forwards findings after a write and fails open when the adapter or guard is broken.
 #
 # Two details the obvious one-liner gets wrong, both copied from post-bash.sh:
 #   - `plan-check` prints findings on stdout. A hook that exits 2 hands the
@@ -51,7 +48,7 @@ case "$f" in
 esac
 
 case "$f" in
-*/.claude/artifacts/plan/*.md) ;;
+*/.claude/artifacts/plan/*/plan.md) ;;
 *) exit 0 ;;
 esac
 
@@ -61,7 +58,7 @@ report="$(make -C "$proj" plan-check FILE="$f" 2>&1)" && exit 0
 
 # Findings, or a broken guard? Only the guard's closing line proves the former.
 printf '%s' "$report" |
-  grep -qE '^plan-check: [0-9]+ reference' || exit 0
+  grep -qE '^plan-check: [0-9]+ finding' || exit 0
 
 printf '%s\n' "$report" >&2
 exit 2

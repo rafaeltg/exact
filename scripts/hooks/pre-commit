@@ -119,7 +119,22 @@ if [ "${#skipped_dirty[@]}" -gt 0 ]; then
   warn "review with: git diff -- <file> for each path above"
 fi
 
-# ─── 4. complexity-check ───────────────────────────────────────────────
+# ─── 4. staged specifications ──────────────────────────────────────────
+read_lines staged_specs < <(staged_files ':(glob)docs/specs/*.md')
+if [ "${#staged_specs[@]}" -gt 0 ]; then
+  section "spec-check-index"
+  for f in "${staged_specs[@]}"; do
+    [ -n "$f" ] || continue
+    if make spec-check-index FILE="$f"; then
+      ok "$f"
+    else
+      err "specification failed: $f"
+      fail=1
+    fi
+  done
+fi
+
+# ─── 5. complexity-check ───────────────────────────────────────────────
 section "complexity-check"
 if make complexity-check; then
   ok "complexity-check passed"
@@ -128,7 +143,7 @@ else
   fail=1
 fi
 
-# ─── 5. imports-check ──────────────────────────────────────────────────
+# ─── 6. imports-check ──────────────────────────────────────────────────
 section "imports-check"
 if make imports-check; then
   ok "imports-check passed"

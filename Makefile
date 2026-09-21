@@ -2,6 +2,7 @@
         test test-failed \
         lint lint-fix format format-fix \
         complexity-check complexity-pre complexity-post \
+        spec-check spec-check-ready spec-check-index spec-check-all \
         plan-check imports-check \
         workflows-check \
         check clean
@@ -43,8 +44,9 @@ endif
 UV     = uv run
 RUFF   = $(UV) ruff
 PYTEST = $(UV) pytest
-GUARD  = python3 .cursor/hooks/complexity-guard.py
-PLAN_GUARD = python3 .cursor/hooks/plan-guard.py
+GUARD       = python3 .cursor/hooks/complexity-guard.py
+SPEC_GUARD  = python3 .cursor/hooks/spec-guard.py
+PLAN_GUARD  = python3 .cursor/hooks/plan-guard.py
 
 define require_python_file
 	@case "$(FILE)" in \
@@ -147,16 +149,42 @@ imports-check: ## Fail on any import cycle inside exact
 	$(AT)printf '==> imports-check\n' >&2
 	$(AT)$(UV) lint-imports
 
-# ─── Plan artifacts ────────────────────────────────────────────────────
-# Reference gate for a `/plan` artifact: every `Files:` path, `TEST=` path,
-# `K=` name and `make` target it claims must resolve. Exits 2 with one line per
-# finding. The guard itself skips any path outside `.claude/artifacts/plan/`.
+# ─── Specification and plan artifacts ─────────────────────────────────
+# Specification checks are complete-document gates. Index mode reads staged
+# specification and evidence blobs, so partial staging cannot validate the worktree.
+spec-check: ## Check one specification. FILE=<spec.md>
+	$(AT)printf '==> spec-check%s\n' "$(if $(FILE), ($(FILE)),)" >&2
+	@test -n "$(FILE)" || { \
+	  printf 'error: spec-check requires FILE=<spec.md>\n' >&2; exit 2; }
+	$(call require_md_file)
+	$(AT)$(SPEC_GUARD) --check "$(FILE)"
+
+spec-check-ready: ## Check one committed ready specification. FILE=<spec.md>
+	$(AT)printf '==> spec-check-ready%s\n' "$(if $(FILE), ($(FILE)),)" >&2
+	@test -n "$(FILE)" || { \
+	  printf 'error: spec-check-ready requires FILE=<spec.md>\n' >&2; exit 2; }
+	$(call require_md_file)
+	$(AT)$(SPEC_GUARD) --ready "$(FILE)"
+
+spec-check-index: ## Check one staged specification. FILE=<spec.md>
+	$(AT)printf '==> spec-check-index%s\n' "$(if $(FILE), ($(FILE)),)" >&2
+	@test -n "$(FILE)" || { \
+	  printf 'error: spec-check-index requires FILE=<spec.md>\n' >&2; exit 2; }
+	$(call require_md_file)
+	$(AT)$(SPEC_GUARD) --check-index "$(FILE)"
+
+spec-check-all: ## Check every tracked docs/specs specification
+	$(AT)printf '==> spec-check-all\n' >&2
+	$(AT)$(SPEC_GUARD) --check-all
+
+# Reference gate for a `/plan` artifact. Strict mode validates the v1 plan
+# grammar, freshness, producer order, test references, and Make targets.
 plan-check: ## Verify plan-artifact references. FILE=<plan.md>
 	$(AT)printf '==> plan-check%s\n' "$(if $(FILE), ($(FILE)),)" >&2
 	@test -n "$(FILE)" || { \
 	  printf 'error: plan-check requires FILE=<plan.md>\n' >&2; exit 2; }
 	$(call require_md_file)
-	$(AT)$(PLAN_GUARD) "$(FILE)"
+	$(AT)$(PLAN_GUARD) --check "$(FILE)"
 
 # ─── Workflow scripts ──────────────────────────────────────────────────
 # `.claude/workflows/*.js` run in the agent harness, not in any interpreter this
@@ -206,6 +234,7 @@ check: ## Lint, format-check, complexity, imports, workflow scripts, tests
 	$(AT)printf '==> check\n' >&2
 	@$(MAKE) lint
 	@$(MAKE) format
+	@$(MAKE) spec-check-all
 	@$(MAKE) complexity-check
 	@$(MAKE) imports-check
 	@$(MAKE) workflows-check
@@ -216,7 +245,8 @@ clean: ## Remove caches and coverage artifacts
 	$(AT)printf '==> clean\n' >&2
 	@find . -type d \( -name __pycache__ -o -name .pytest_cache \
 	    -o -name .mypy_cache -o -name .ruff_cache -o -name htmlcov \
-	    -o -name .scannerwork \) \
+	    -o -name .scannerwork -o -name .import_linter_cache \
+		-o -name .test-reports -o -name exact.egg-info \) \
 	    -prune -exec rm -rf {} +
 	@find . -type f \( -name "*.pyc" -o -name "*.pyo" -o -name .coverage \
 	    -o -name "coverage.xml" \) -delete

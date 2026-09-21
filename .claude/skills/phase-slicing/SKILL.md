@@ -25,6 +25,24 @@ This single question catches most slicing mistakes. A phase titled "Add user mod
 
 The point is risk reduction. Any phase that fails this test means the team has accepted a window of time where the system is broken, and broken windows hide bugs.
 
+## Canonical plan artifact contract
+
+When this skill writes `.claude/artifacts/plan/<topic>/plan.md`, each phase uses this structure:
+
+```markdown
+### Phase N — <title>
+**Goal:** <observable result>
+**Stop condition:** <safe-to-ship state>
+**Owns files:** `path`, `path`
+**Provides:** <cross-phase contract or None>
+**Acceptance criteria:**
+- [ ] <phase behavior>
+- [ ] Full integration gate passes: `make check`
+```
+
+Phase numbers start at 1 without gaps. Task numbers use the phase number, such as `Task 1.1`.
+Owned files are unique across phases. The final acceptance criterion is the full integration gate.
+
 ## What a vertical slice contains
 
 A vertical slice cuts through every layer needed for one piece of behavior:

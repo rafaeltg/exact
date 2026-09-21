@@ -11,7 +11,11 @@ make lint / lint-fix
 make format / format-fix   # FILE=path for one file
 make complexity-check
 make imports-check       # fail on any import cycle inside exact
-make plan-check FILE=path  # verify a .claude/artifacts/plan/ artifact's references
+make spec-check FILE=path  # validate one docs/specs/ specification
+make spec-check-ready FILE=path  # require a committed Ready specification
+make spec-check-index FILE=path  # validate staged specification bytes
+make spec-check-all       # validate all tracked docs/specs/ specifications
+make plan-check FILE=path  # validate a canonical .claude/artifacts/plan/ plan
 make workflows-check    # syntax-check .claude/workflows/*.js
 make check              # lint + format-check + complexity + imports + workflow scripts + tests
 make clean

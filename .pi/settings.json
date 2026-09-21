@@ -1,0 +1,10 @@
+{
+  "defaultProvider": "openrouter",
+  "defaultModel": "openai/gpt-5.6-luna-pro",
+  "skills": [
+    "../.claude/skills/phase-slicing",
+    "../.claude/skills/task-structuring",
+    "../.claude/skills/python-quality",
+    "../.claude/skills/test-design"
+  ]
+}

@@ -14,6 +14,24 @@ Tasks are the unit of work the implementer actually executes. Too big: a risky m
 
 The phase already exists when this skill applies. Slicing decisions (where phase boundaries go, what phases ship in what order) belong to the structure stage and to `phase-slicing`. Here you are decomposing the *inside* of a phase.
 
+## Canonical plan artifact contract
+
+When this skill writes `.claude/artifacts/plan/<topic>/plan.md`, use these fields in this order:
+
+```markdown
+### Task N.n — <title>
+**Decisions:** D1, D2
+**Do:** <complete implementation instruction>
+**Files:** create: `path` | modify: `path`
+**Provides:** test: `tests/test_x.py::test_name` | make-target: `target`
+**Verify:** `make test TEST=tests/test_x.py K=test_name`
+```
+
+Keep every field on one physical line. Use `None` only for `Decisions` or `Provides`.
+`Files` must contain one or more paths. A `Verify` field contains one simple backticked `make`
+command. Do not use shell operators, Make options, a second target, or boolean `K=` expressions.
+A later task may consume a path, test, or target provided by an earlier task.
+
 ## What a good task looks like
 
 A good task is **single-concern, self-contained, and independently committable**:
@@ -97,11 +115,14 @@ If the project has no convention for the test layer the task touches, surface th
 - **Complexity budget:** keep every function a task touches inside the guard budgets. `.cursor/hooks/complexity-guard.py` owns the numbers. Never restate them. `make complexity-check` fails on any function over budget, and the git pre-commit hook runs it. It therefore rejects the commit. **Two changes are ONE task when the first pushes a function over budget until the second lands.** Extract the new named unit and split the function it shrinks in one commit.
 - **Contract changes:** a task that changes graph topology, bounds, tools, or citation rules must update `docs/spec.md` and `docs/architecture.md` in the same task. Name both files in the Files field.
 - **Graph or node changes:** the Verify must exercise the node through the graph, not through a private helper. Tests use `tests/fakes.py`; no task adds live network to pytest.
-- **Full gate:** `make check` runs lint, format-check, complexity, imports, and tests. Use it for the final task of a phase, not for every task — a targeted `make test TEST=…` is the better per-task Verify.
+- **Full gate:** `make check` runs lint, format-check, complexity, imports, and tests. Use it for the phase acceptance criteria, not as a task Verify — a targeted `make test TEST=…` is the better per-task Verify.
 
 ### When a task needs multiple Verify commands
 
-Prefer a single targeted command. When that's genuinely insufficient — for example, when a task introduces both a unit test and an integration test that must both pass — use either a fenced block or a bullet list:
+For a canonical plan artifact, use one simple Verify command. Split the task when it needs
+independent commands. The phase acceptance criteria carry the broad integration gate.
+
+For other planning documents, multiple commands may use a fenced block or a bullet list:
 
 ````markdown
 **Verify:**
