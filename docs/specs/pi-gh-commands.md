@@ -1,6 +1,6 @@
 # GitHub workflow commands for Pi
 
-Topic: gh-commands
+Topic: pi-gh-commands
 Revision: 2
 Status: Ready
 Superseded by: None
@@ -69,7 +69,7 @@ Port the repository's `/commit` and `/create-pr` GitHub workflow commands to Pi 
 - **R1:** Pi discovers `/commit` and `/create-pr` from the project resources, and each command exposes the source description and argument contract.
 - **R2:** An explicit `/commit` invocation observes all source workflow stages, including restoration of the original GitHub account after post-switch failures, and unauthorized Git or GitHub CLI tool calls are blocked.
 - **R3:** An explicit `/create-pr` invocation observes the source branch checks, dirty-tree confirmation, push, PR creation, account restoration, and URL report without bypassing the source command's stop conditions, and unauthorized Git or GitHub CLI tool calls are blocked.
-- **R4:** The focused Pi resource and extension tests pass and `make spec-check FILE=docs/specs/gh-commands.md` passes.
+- **R4:** The focused Pi resource and extension tests pass and `make spec-check FILE=docs/specs/pi-gh-commands.md` passes.
 
 ## Open questions
 
