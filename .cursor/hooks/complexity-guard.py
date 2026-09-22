@@ -743,7 +743,10 @@ def report(path: Path) -> int:
     A reader that needs these numbers otherwise reads this whole file to
     estimate them, and then restates the budgets somewhere they can drift.
     """
-    if _is_exempt_file(path):
+    # `_relative_key`, because `measure_tree` decides exemption on the
+    # repo-relative path. A checkout under a directory named `tests` would
+    # otherwise report every source file here as exempt.
+    if _is_exempt_file(Path(_relative_key(path))):
         print(f"complexity-report: {path} is exempt from the budgets")
         return 0
     try:

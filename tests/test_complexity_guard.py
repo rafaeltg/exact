@@ -535,6 +535,23 @@ def test_report_names_an_exempt_file(
     assert "exempt from the budgets" in capsys.readouterr().out
 
 
+def test_report_decides_exemption_on_the_repository_relative_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """A checkout under a directory named `tests` exempts nothing inside it."""
+    root = tmp_path / "tests" / "project"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(root))
+    target = root / "app.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    assert guard.report(target) == 0
+
+    out = capsys.readouterr().out
+    assert "exempt" not in out
+    assert "f (line 1): " in out
+
+
 def test_report_fails_on_a_file_it_cannot_measure(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
