@@ -55,14 +55,17 @@ esac
 
 [ -e "$f" ] || exit 0
 
-report="$(make -C "$proj" plan-check FILE="$f" 2>&1)"
-
 # The gate has seen these bytes. `post-bash.sh` reads this stamp, so a plan
 # written through the shell is checked once and a Write is not checked twice.
 # Only a directory `make plan-init` opened is stamped: stamping an older plan
 # would open it to that probe, and its findings are not this workflow's to fix.
+#
+# Written first, as `post-spec.sh` writes its own: a write that lands while the
+# gate reads must stay newer than the stamp, or that write is never probed.
 [ -f "${f%/plan.md}/.spec-plan-v1" ] &&
   { : >"${f%/plan.md}/.plan-checked" 2>/dev/null || true; }
+
+report="$(make -C "$proj" plan-check FILE="$f" 2>&1)"
 
 # Findings, or a broken guard? Only the guard's closing line proves the former.
 total="$(printf '%s\n' "$report" |
