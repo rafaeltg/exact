@@ -37,6 +37,14 @@ case "$f" in
 esac
 
 [ -e "$f" ] || exit 0
+
+# The gate has seen these bytes. `post-bash.sh` reads this stamp, one file per
+# specification, so a shell write is checked once and a write through this hook
+# is not checked twice. It is written first: a write that lands while the gate
+# reads must stay newer than the stamp.
+mkdir -p "$proj/.test-reports" 2>/dev/null || true
+: >"$proj/.test-reports/spec-$(basename "$f")" 2>/dev/null || true
+
 report="$(make -C "$proj" spec-check FILE="$f" 2>&1)" && exit 0
 printf '%s' "$report" | grep -qE '^spec-check: [0-9]+ finding' || exit 0
 printf '%s\n' "$report" >&2

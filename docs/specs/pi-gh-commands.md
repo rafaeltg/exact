@@ -1,7 +1,7 @@
 # GitHub workflow commands for Pi
 
 Topic: pi-gh-commands
-Revision: 2
+Revision: 3
 Status: Ready
 Superseded by: None
 
@@ -13,15 +13,15 @@ Port the repository's `/commit` and `/create-pr` GitHub workflow commands to Pi 
 
 ### R1 — Expose the GitHub workflow commands
 - **Status:** active
-- **Behavior:** The project exposes `/commit` and `/create-pr` from Pi project resources with user-facing descriptions and the source argument contract; the project-local extension is loaded as the enforcement boundary.
+- **Behavior:** The project exposes `/commit` and `/create-pr` from Pi project resources. Each one keeps its user-facing description and the source argument contract. The project-local extension is loaded as the enforcement boundary.
 
 ### R2 — Port and restrict the commit workflow
 - **Status:** active
-- **Behavior:** Explicitly invoking `/commit` covers the source workflow for GitHub account pre-flight, working-tree inspection, logical commit grouping, hook-preserving commit execution, account restoration, and final status reporting, while the Pi extension blocks tool calls outside the source command's allowed Git and GitHub CLI patterns.
+- **Behavior:** An explicit `/commit` covers the source workflow. That workflow is GitHub account pre-flight, working-tree inspection, logical commit grouping, hook-preserving commit execution, account restoration, and final status reporting. The Pi extension blocks each tool call outside the source command's allowed Git and GitHub CLI patterns.
 
 ### R3 — Port and restrict the pull-request workflow
 - **Status:** active
-- **Behavior:** Explicitly invoking `/create-pr` covers the source workflow for GitHub account and branch pre-flight, dirty-tree confirmation, branch publication, generated PR content, PR creation, account restoration, and URL reporting, while the Pi extension blocks tool calls outside the source command's allowed Git and GitHub CLI patterns.
+- **Behavior:** An explicit `/create-pr` covers the source workflow. That workflow is GitHub account and branch pre-flight, dirty-tree confirmation, branch publication, generated PR content, PR creation, account restoration, and URL reporting. The Pi extension blocks each tool call outside the source command's allowed Git and GitHub CLI patterns.
 
 ### R4 — Keep the Pi resources verifiable
 - **Status:** active
@@ -40,7 +40,7 @@ Port the repository's `/commit` and `/create-pr` GitHub workflow commands to Pi 
 - **Status:** active
 - **Question:** What should enforce the Claude command restrictions in Pi?
 - **Answer:** Add a project-local Pi extension that mechanically enforces the source commands' tool and invocation restrictions.
-- **Impact:** The extension is the enforcement boundary for `/commit` and `/create-pr`; the Pi resources must not rely only on prompt text to restrict Git and GitHub CLI operations.
+- **Impact:** The extension is the enforcement boundary for `/commit` and `/create-pr`. The Pi resources do not rely on prompt text alone to restrict Git and GitHub CLI operations.
 - **Evidence:** E1
 
 ## Repository evidence
@@ -67,8 +67,8 @@ Port the repository's `/commit` and `/create-pr` GitHub workflow commands to Pi 
 ## Acceptance criteria
 
 - **R1:** Pi discovers `/commit` and `/create-pr` from the project resources, and each command exposes the source description and argument contract.
-- **R2:** An explicit `/commit` invocation observes all source workflow stages, including restoration of the original GitHub account after post-switch failures, and unauthorized Git or GitHub CLI tool calls are blocked.
-- **R3:** An explicit `/create-pr` invocation observes the source branch checks, dirty-tree confirmation, push, PR creation, account restoration, and URL report without bypassing the source command's stop conditions, and unauthorized Git or GitHub CLI tool calls are blocked.
+- **R2:** An explicit `/commit` observes each source workflow stage. It restores the original GitHub account after a post-switch failure. Unauthorized Git and GitHub CLI tool calls are blocked.
+- **R3:** An explicit `/create-pr` observes the source branch checks, dirty-tree confirmation, push, PR creation, account restoration, and URL report. It does not bypass a stop condition of the source command. Unauthorized Git and GitHub CLI tool calls are blocked.
 - **R4:** The focused Pi resource and extension tests pass and `make spec-check FILE=docs/specs/pi-gh-commands.md` passes.
 
 ## Open questions

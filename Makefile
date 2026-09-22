@@ -1,9 +1,9 @@
 .PHONY: help setup install-hooks \
         test test-failed \
         lint lint-fix format format-fix \
-        complexity-check complexity-pre complexity-post \
+        complexity-check complexity-pre complexity-post complexity-report \
         spec-check spec-check-ready spec-check-index spec-check-all \
-        plan-check imports-check \
+        plan-check plan-init imports-check \
         workflows-check pi-test \
         check clean
 
@@ -21,10 +21,13 @@ export PROJECT
 # K=<keyword>          → pytest -k filter
 # VERBOSE=1            → -vv -x; default is quiet (-q)
 # FILE=<path>          → lint-fix / format / format-fix one .py / .pyi file
+#                        complexity-report one .py / .pyi file
 #                        plan-check one .md plan artifact
-TEST ?=
-K    ?=
-FILE ?=
+# TOPIC=<slug>         → plan-init one docs/specs/<slug>.md topic
+TEST  ?=
+K     ?=
+FILE  ?=
+TOPIC ?=
 
 PYTHON_SRC = src tests .cursor/hooks
 
@@ -140,6 +143,16 @@ complexity-pre: ## Cursor preToolUse — deny over-budget Write/StrReplace
 complexity-post: ## Cursor postToolUse — advisory complexity context
 	@$(GUARD)
 
+# Every function's measured metrics against its budget. A plan author needs the
+# headroom of the functions a task grows; without this, the only source is the
+# guard's own 32 KB of code, and a restated budget drifts from it.
+complexity-report: ## Print budget headroom per function. FILE=<path.py>
+	$(AT)printf '==> complexity-report%s\n' "$(if $(FILE), ($(FILE)),)" >&2
+	@test -n "$(FILE)" || { \
+	  printf 'error: complexity-report requires FILE=<path.py>\n' >&2; exit 2; }
+	$(call require_python_file)
+	$(AT)$(GUARD) --report "$(FILE)"
+
 # ─── Imports ───────────────────────────────────────────────────────────
 # Package-level: at each level the contract squashes every sibling's subtree
 # and forbids cycles between the siblings. Stricter than "no module cycle" —
@@ -185,6 +198,15 @@ plan-check: ## Verify plan-artifact references. FILE=<plan.md>
 	  printf 'error: plan-check requires FILE=<plan.md>\n' >&2; exit 2; }
 	$(call require_md_file)
 	$(AT)$(PLAN_GUARD) --check "$(FILE)"
+
+# Pre-flight for one `/plan` run: the topic slug, the ready specification gate,
+# a clean tree, and the state of the topic directory. It writes the v1 marker
+# and prints the metadata lines of the plan head.
+plan-init: ## Gate the inputs of one plan and print its metadata. TOPIC=<slug>
+	$(AT)printf '==> plan-init%s\n' "$(if $(TOPIC), ($(TOPIC)),)" >&2
+	@test -n "$(TOPIC)" || { \
+	  printf 'error: plan-init requires TOPIC=<topic-slug>\n' >&2; exit 2; }
+	$(AT)$(PLAN_GUARD) --init "$(TOPIC)"
 
 # ─── Workflow scripts ──────────────────────────────────────────────────
 # `.claude/workflows/*.js` run in the agent harness, not in any interpreter this

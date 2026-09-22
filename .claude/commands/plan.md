@@ -4,7 +4,7 @@ description: >
   executes task by task. The only input is the Ready specification docs/specs/<topic>.md. Takes no
   product decision. A fresh agent reviews the plan against the tree before it is approved.
 argument-hint: "<topic-slug>"
-allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Agent, Task, SendMessage, Skill, Bash(make plan-check*), Bash(make spec-check-ready*), Bash(git status*), Bash(git rev-parse*), Bash(git ls-files*), Bash(shasum*), Bash(date*), Bash(mkdir*)
+allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Agent, Task, SendMessage, Skill, Bash(make plan-init*), Bash(make plan-check*), Bash(make complexity-report*), Bash(git status*), Bash(shasum*)
 disable-model-invocation: true
 ---
 
@@ -18,39 +18,27 @@ and send the user to `/spec $1`. `/spec` owns every behavior decision.
 
 **Two skills own the method.** `phase-slicing` owns where the phase lines go. `task-structuring`
 owns what a task and a `Verify` look like. This command owns the gates, the output contract, and
-the review. **Never re-explain a skill's method here.** The output shape below repeats the
-field layout only, so the document format sits in one place. Load each skill at the phase that
-needs it.
+the review. **Never re-explain a skill's method here.** The output shape below is the one copy of
+the document format. Load each skill at the phase that needs it.
 
 `.cursor/hooks/plan-guard.py` owns the validation rules. `make plan-check` is authoritative. The
 lists below help you write; they never replace a run of the gate.
 
 ## Phase 0 — Gate the inputs
 
-1. **Validate `$1` against `^[a-z0-9][a-z0-9._-]*$`. STOP when it fails.** Print the slug.
-2. STOP when `docs/specs/$1.md` does not exist. Print the path.
-3. **STOP unless the specification carries the line `Status: Ready`.** Check the line yourself.
-   No gate checks it: a committed `Status: Draft` document passes `spec-check-ready` and
-   `plan-check`.
-4. Run `make spec-check-ready FILE=docs/specs/$1.md`. **STOP on any finding.** Print the findings.
-   The gate needs a tracked specification, a clean tracked worktree, and no difference from
-   `HEAD`.
-5. Run `git status --porcelain=v1 --untracked-files=all`. **The output must be empty.** STOP when
-   it is not. A dirty tree breaks the `Repository commit` metadata the plan records.
-6. **Inspect `.claude/artifacts/plan/$1/` before you write anything.**
-   - It does not exist: go on.
-   - It exists without `.spec-plan-v1`, or the marker holds other bytes: **STOP.** The directory
-     holds an older plan format. Ask the user to move it. Never overwrite it.
-   - It holds a valid marker and a `plan.md` whose metadata does not match the current
-     specification: STOP. Ask whether to replace the plan.
-7. Only now write `.claude/artifacts/plan/$1/.spec-plan-v1`. It holds exactly `version=1` and a
-   final newline.
+1. **Validate `$1` against `^[a-z0-9][a-z0-9._-]*$`. STOP when it fails.** Print the slug. It
+   reaches a Make recipe and a path, and neither checks it before the shell does.
+2. Run `make plan-init TOPIC=$1`. **STOP on any finding.** Print the findings.
+3. It gates the slug again, with the Ready specification, the tree, and the topic directory. It
+   writes the workflow marker, and it prints the five metadata lines of the plan head.
+4. When it reports `(stale)`, the directory holds a plan for another specification. Ask the user
+   whether to replace it. STOP on no.
 
 ## Phase 1 — Read the contract
 
 1. Read `docs/specs/$1.md` in full.
-2. The active `D<n>` identifiers are the only decisions a task may cite. A superseded decision is
-   not citable.
+2. The active `D<n>` and `R<n>` identifiers are the only ones a task may cite. A superseded entry
+   is not citable.
 3. The specification names are immutable. Use them verbatim.
 4. Read `AGENTS.md`, and the code each requirement touches.
 
@@ -60,30 +48,26 @@ lists below help you write; they never replace a run of the gate.
 2. Produce the phase list, the cross-phase contracts, and the file-ownership map.
 3. **A path belongs to one phase only.** The gate rejects a reused owned path, and it rejects a
    task file outside its own phase's ownership.
-4. The skill sends you back when a cross-phase signature will not write. A signature the
-   specification does not fix is a product decision. Go to `/spec`.
+4. A cross-phase signature the specification does not fix is a product decision. Go to `/spec`.
 
 ## Phase 3 — Decompose into tasks
 
 1. Invoke `Skill(skill="task-structuring")`. Follow it. Do not repeat its rules here.
-2. Produce `Decisions`, `Do`, `Files`, `Provides`, and `Verify` for every task.
-3. The skill sends you back to the phase boundary when a task will not decompose. Go to Phase 2,
-   and redraw it there.
+2. Produce `Decisions`, `Requirements`, `Do`, `Files`, `Provides`, and `Verify` for every task.
+3. Run `make complexity-report FILE=<path>` on each Python file a task grows. It prints the
+   measured metrics of every function against its budget. Use the headroom to decide the unit
+   split. Keep the output for Phase 5.
 
 ## Phase 4 — Write the plan
 
-Write only `.claude/artifacts/plan/$1/plan.md`. Write it in ASD-STE100 Simplified Technical
-English. Keep instruction sentences to 20 words or fewer. Keep descriptive sentences to 25 or
-fewer.
+Write only `.claude/artifacts/plan/$1/plan.md`, and write it with `Write` or `Edit` only. **A
+Bash write skips the gate hook.** Write in ASD-STE100 Simplified Technical English (`AGENTS.md`).
+The gate limits a sentence to 25 words. Keep an instruction to 20.
 
-Compute the metadata now:
+The metadata block is the five lines `make plan-init` printed. Copy them verbatim. Do not
+recompute them, and do not write a plan against a different commit.
 
-- `Spec SHA-256` — `shasum -a 256 docs/specs/$1.md`, over the raw bytes.
-- `Repository commit` — `git rev-parse HEAD`, all 40 characters.
-- `Date` — today, as `YYYY-MM-DD`.
-
-Recompute the digest and the commit ID when anything commits during the run. The gate
-compares both live.
+A `review.md` left by an earlier run is void the moment you write. Phase 5 replaces it.
 
 ### The plan is machine input. Write it lean
 
@@ -95,7 +79,8 @@ introduced, or reminded.
 Delete these on sight:
 
 - Rationale, background, and motivation. Why the work matters changes no keystroke.
-- Benefits, goals prose, and summaries of what an earlier phase did.
+- Benefits, and summaries of what an earlier phase did. A `Goal` field states one observable
+  result, and nothing else.
 - Restated decisions. Cite `D<n>`. Never repeat the text of a decision.
 - Restated rules from `AGENTS.md` or from either skill. Cite the file.
 - "Note that", "it is important to", "keep in mind", "as mentioned above".
@@ -132,38 +117,32 @@ Date: <YYYY-MM-DD>
 
 ### Task 1.1 — <title>
 **Decisions:** D1, D2
+**Requirements:** R1, R3
 **Do:** <complete implementation instruction>
 **Files:** create: `path` | modify: `path`
 **Provides:** test: `tests/test_x.py::test_name` | make-target: `target`
 **Verify:** `make test TEST=tests/test_x.py K=test_name`
 ```
 
-The three sections appear once, in that order. `task-structuring` requires one field per line.
-The gate reads a packed line as one long field, and reports the task as missing the others.
-
 ### What the two skills do not tell you
 
 `phase-slicing` owns the phase block. `task-structuring` owns the task fields. These rules come
 from the gate, and neither skill carries them:
 
-- The metadata block sits under the title, before the first section.
 - **Every task path appears verbatim in its own phase's `Owns files`.** The gate compares exact
   strings. A phase that owns `src/exact/` does not own `src/exact/graph.py`. List each file.
-- A `modify:` path exists in the baseline, or an earlier task creates it. A `create:` path does
-  neither.
-- `Files` and `Provides` separate their kinds with ` | `. Each kind appears once. Paths are
-  unique inside a task.
+- A `modify:` path exists in the recorded commit, or an earlier task creates it. A `create:` path
+  does neither.
 - A provided test is `tests/<file>.py::test_<name>`. A provided Make target is a bare name. **The
   file that holds it must appear in the same task's `Files`,** and a Make target needs `Makefile`
   there.
-- `VERBOSE=` accepts `1`. `FILE=` accepts a repository-relative path.
-- `Decisions` cites active `D<n>` identifiers from the specification. A superseded or unknown
-  identifier fails the gate.
-- `TBD`, `TODO`, "to be decided", and a `<!-- tasks: … -->` placeholder are all rejected.
+- **A `Verify` may name only what already exists or was already provided.** Its Make target, its
+  `TEST=` path, its `::selector` and its `K=` name each resolve in the recorded commit, or in the
+  `Provides` of this task or an earlier one.
+- **`Requirements` carries the coverage.** Every active `R<n>` needs at least one task, and a task
+  that serves none writes `None`.
 
 ### Write it in steps. Never in one call
-
-One large write degrades the end of the document. The last tasks lose fields and become vague.
 
 1. `Write` the head: the title, the metadata, `## Scope boundaries`, `## Phases` with every phase
    block complete, and `## Tasks` with the tasks of Phase 1 only.
@@ -171,47 +150,31 @@ One large write degrades the end of the document. The last tasks lose fields and
    after the last task already written.
 3. Split a phase of more than six tasks into two `Edit` calls.
 4. **Never write a placeholder line.** The gate rejects one.
-5. The post-write hook runs the full gate after each step. Before the last phase lands, it reports
-   `phase N has no task` and `last phase has no task`. Those two findings are expected. Every
-   other finding is real. Repair it before the next `Edit`.
-
-### Validate
-
-Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md`. **Repair every finding before the
-review.** The gate resolves every `Files` path, `TEST=` path, `K=` name, `Provides` value,
-`Decisions` identifier, and `make` target the plan claims. It checks owned paths for syntax and
-reuse only.
+5. The post-write hook runs the gate after each step, and it drops the findings that a half-written
+   plan always carries. Repair every finding it reports before the next `Edit`.
 
 ## Phase 5 — Independent review (hard gate)
 
 A plan that asserts a false fact about the tree ships a bug that no gate catches.
 
-1. Send ONE `fs-readonly-worker` subagent with fresh context. It holds no Bash and no web tools,
-   so it verifies by reading this tree only.
-2. Give it two paths: the plan, and `docs/specs/$1.md`. **Copy the delete-on-sight list and the
-   20-word and 25-word limits from Phase 4 into the prompt.** A reviewer without the criteria
-   applies its own taste.
-
-   | Check | Method |
-   |---|---|
-   | Each `Files: modify:` path exists | `Glob` |
-   | Each `Files: create:` path does not exist | `Glob` |
-   | Each symbol a `Do` field names exists | `Grep` for the definition |
-   | Each call-site or caller count | `Grep` for the name |
-   | Each `make` target in a `Verify` exists | `Grep` the `Makefile` |
-   | Every name matches the specification | Read `docs/specs/$1.md` |
-   | Every active requirement has a task | Read the specification and the plan |
-   | Every cited `D<n>` is active | Read `## Decisions` |
-   | No task takes a decision the specification did not take | Read both documents |
-   | Every line changes what the executor does | Apply the delete-on-sight list. Quote each line that fails |
-   | STE compliance | 20 words for an instruction, 25 for a description |
-
-3. Require this row format: `<task-or-section> → <claim> → <repository evidence> → blocking | non-blocking`.
-   **Every row in the table above is blocking.** A leanness finding blocks the same as a wrong
-   path.
-4. Apply each fix with `Edit`. Never rewrite the plan. Run `make plan-check` again after every
-   repair.
-5. **STOP instead of claiming approval when no fresh reviewer is available.** A self-review in
+1. Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md`. **Repair every finding before you
+   send a reviewer.** The reviewer is told the gate already proved those facts, so a review over a
+   failing gate wastes the round. A `review.md` left by an earlier run is the one exception:
+   `review is not Approved` and `review digest does not match plan` stand until you write the new
+   file at the end of this phase.
+2. Send ONE `plan-reviewer` subagent with fresh context. Give it three things: the plan path,
+   `docs/specs/$1.md`, and the `make complexity-report` output from Phase 3. **Do not restate its
+   checklist, and do not give it your own criteria.** Its agent file owns both.
+3. Repair each blocking row with `Edit`. Never rewrite the plan.
+4. Send the repaired task IDs to **the same reviewer** with `SendMessage`. It verifies each repair,
+   and reports any regression the repair caused. Repeat from step 3 until it reports no blocking
+   row. A continuation round costs about a thirteenth of a fresh round.
+5. Send a second fresh `plan-reviewer` only for a plan of more than 10 tasks, and verify its rows
+   through step 3 and step 4. Continuations converge on a small plan; a large one earns one pass
+   of fresh eyes.
+6. **Never send more than two fresh reviewers in one run.** While a blocking row is open after the
+   second, write `review.md` with `Status: Blocking` and its rows, and STOP. The user decides.
+7. **STOP instead of claiming approval when no fresh reviewer is available.** A self-review in
    this context is not a review.
 
 Write `.claude/artifacts/plan/$1/review.md` only after the last repair. It carries these exact
@@ -224,16 +187,13 @@ Date: <YYYY-MM-DD>
 Status: Blocking | Approved
 ```
 
-- `Plan SHA-256` is the digest of the current `plan.md` bytes. **Any later edit to the plan breaks
-  it.** Repair, then re-review, then rewrite `review.md`.
+- `Plan SHA-256` is `shasum -a 256` over the current `plan.md` bytes. Any later edit breaks it.
 - **A repaired finding is not a row.** The gate rejects any row that ends in `→ blocking`, and
   it does not read a repair note. An approved review holds `non-blocking` rows only.
-- Set `Status: Approved` only when no blocking finding remains open. While one is open, write
-  `Status: Blocking` with its rows, and STOP. `make plan-check` fails on it, and that is correct.
-- The gate reads `review.md` whenever it exists. A stale or blocking review fails `make
-  plan-check`.
 
-Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md` one last time. It must be clean.
+Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md` one last time. It must be clean,
+unless step 6 stopped with `Status: Blocking`. The gate fails on a Blocking review, and that is
+correct. Never flip a review to `Approved` to clear it.
 
 ## Phase 6 — Report
 
@@ -244,13 +204,4 @@ Run `make plan-check FILE=.claude/artifacts/plan/$1/plan.md` one last time. It m
    - "Review `.claude/artifacts/plan/$1/` before any code. The directory is gitignored."
    - "Execute Phase 1 of the plan."
 
-## Remember
-
-- You write **three** files, all under `.claude/artifacts/plan/$1/`: `.spec-plan-v1`, `plan.md`,
-  and `review.md`. You never create or edit a file under `src/`.
-- The specification is the only source of a product decision. A decision you took is a defect.
-  Go to `/spec`.
-- The two skills own the method. This file owns the gates, the contract, and the review.
-- A line that does not change what the executor does is a defect. Delete it.
-- One `Write` for the whole plan is a defect. Write the head, then one `Edit` per phase.
-- A `review.md` written before the last repair is a defect. The digest proves it.
+A product decision you took yourself is a defect. Go to `/spec`.

@@ -119,11 +119,15 @@ if [ "${#skipped_dirty[@]}" -gt 0 ]; then
   warn "review with: git diff -- <file> for each path above"
 fi
 
-# ─── 4. staged specifications ──────────────────────────────────────────
-read_lines staged_specs < <(staged_files ':(glob)docs/specs/*.md')
-if [ "${#staged_specs[@]}" -gt 0 ]; then
+# ─── 4. tracked specifications ─────────────────────────────────────────
+# Every tracked specification, not only the staged ones. A specification cites
+# repository evidence, so a commit that deletes or shortens a cited file breaks
+# a specification it never touches. A staged-only gate never sees that, and the
+# break then surfaces in `spec-check-ready`, one `/plan` run too late.
+read_lines tracked_specs < <(git ls-files -- ':(glob)docs/specs/*.md')
+if [ "${#tracked_specs[@]}" -gt 0 ]; then
   section "spec-check-index"
-  for f in "${staged_specs[@]}"; do
+  for f in "${tracked_specs[@]}"; do
     [ -n "$f" ] || continue
     if make spec-check-index FILE="$f"; then
       ok "$f"

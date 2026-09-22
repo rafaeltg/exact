@@ -10,21 +10,29 @@ make test               # TEST=path K=expr VERBOSE=1
 make lint / lint-fix
 make format / format-fix   # FILE=path for one file
 make complexity-check
+make complexity-report FILE=path  # budget headroom of each function
 make imports-check       # fail on any import cycle inside exact
 make spec-check FILE=path  # validate one docs/specs/ specification
 make spec-check-ready FILE=path  # require a committed Ready specification
 make spec-check-index FILE=path  # validate staged specification bytes
 make spec-check-all       # validate all tracked docs/specs/ specifications
 make plan-check FILE=path  # validate a canonical .claude/artifacts/plan/ plan
+make plan-init TOPIC=slug  # gate /plan inputs and print the plan metadata
 make workflows-check    # syntax-check .claude/workflows/*.js
-make check              # lint + format-check + complexity + imports + workflow scripts + tests
+make check              # lint + format + specs + complexity + imports + workflows + pi + tests
 make clean
 ```
 
-Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage), `make complexity-check` and
-`make imports-check`. Do not skip hooks.
+Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage), `make spec-check-index` over every tracked
+specification, `make complexity-check` and `make imports-check`. Do not skip hooks.
 
-Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` hit `make complexity-pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. `TabWrite` gets `make complexity-post` via `postToolUse`.
+`make check` reads the worktree; the commit gate reads the index. Stage a specification fix before
+you commit, or the commit gate still sees the committed bytes.
+
+Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` hit `make complexity-pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. `TabWrite` gets `make complexity-post` via `postToolUse`. After a `Bash` call,
+`scripts/hooks/post-bash.sh` runs the complexity gate, the specification gate on a changed
+`docs/specs/` file, and the plan gate on a plan the workflow opened. A shell write therefore
+reaches the same gates a `Write` reaches.
 
 ## Bounds (do not loosen)
 

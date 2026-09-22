@@ -1,7 +1,7 @@
 # User preferences
 
 Topic: user-preferences
-Revision: 2
+Revision: 3
 Status: Ready
 Superseded by: None
 
@@ -619,7 +619,7 @@ Give the user run-level preferences for output taste, source mix, and search bia
 
 ## Repository evidence
 
-- E1: repo:docs/plans/user-preferences.md
+- E1: person-decision
 - E2: repo:src/exact/models.py::ResearchBrief
 - E3: repo:src/exact/nodes/plan.py#L25
 - E4: repo:src/exact/nodes/scout.py#L67
@@ -662,17 +662,17 @@ Give the user run-level preferences for output taste, source mix, and search bia
 - E41: repo:docs/spec.md#L383
 - E42: repo:src/exact/nodes/scout.py#L30
 - E43: repo:src/exact/cli.py#L161
-- E44: repo:docs/plans/user-preferences.md#L128
+- E44: person-decision
 
 ## Acceptance criteria
 
 - **R1:** For each preference, a test sets the flag and the variable to different values, and the flag value wins. With neither set, the default applies. `--no-news` overrides `EXACT_NEWS_BIAS=1`. `EXACT_EXCLUDE_DOMAINS=a.com, b.com` gives two hosts. One `--exclude-domain c.com` replaces them. `--skip-clarify` gives `clarify_mode=skip`. With an injected `Runtime`, `--tone plain` and `--skip-clarify` reach the run, `--effort max` does not, and `--tone Executive` exits `1`.
-- **R2:** Each of these exits `1` with its D35 or D55 message on stderr, before the live-key check: `--tone Executive`, `--lang fr`, a 21-host list, `https://a.com`, `*.a.com`, `a.com/blog`, `localhost`, `a.com.`, `münchen.de`, include with exclude, include with `--denylist social`, and `--skip-clarify --clarify prefer`. A 20-host list and `xn--mnchen-3ya.de` are valid. An invalid effort with an invalid tone reports the effort. An invalid tone with an invalid `EXACT_TRACE` reports the tone. Building `Settings` with include and exclude domains raises.
+- **R2:** Each of these exits `1` before the live-key check. Its D35 or D55 message goes to stderr: `--tone Executive`, `--lang fr`, a 21-host list, `https://a.com`, `*.a.com`, `a.com/blog`, `localhost`, `a.com.`, `münchen.de`, include with exclude, include with `--denylist social`, and `--skip-clarify --clarify prefer`. A 20-host list and `xn--mnchen-3ya.de` are valid. An invalid effort with an invalid tone reports the effort. An invalid tone with an invalid `EXACT_TRACE` reports the tone. Building `Settings` with include and exclude domains raises.
 - **R3:** For every preference, the `effort=` echo line equals the line of a run without preferences, and every search requests the resolved `max_hits`.
-- **R4:** For each value of `language`, `length` and `structure`, and each `tone` except `neutral`, the captured `WRITE` prompt holds the string of that value, the citation rule and `## Open questions`. With `tone=neutral` it holds no tone string. The `bullets` string exempts `## Open questions` from the citation rule. The `es` and `pt` strings keep `## Open questions` in English and tell the writer to translate the other headings.
+- **R4:** The captured `WRITE` prompt holds the string of each value, the citation rule and `## Open questions`. This applies to each value of `language`, `length` and `structure`, and to each `tone` except `neutral`. With `tone=neutral` it holds no tone string. The `bullets` string exempts `## Open questions` from the citation rule. The `es` and `pt` strings keep `## Open questions` in English and tell the writer to translate the other headings.
 - **R5:** Every preference field is an enum, a boolean or a validated host list. No other preference string reaches a prompt.
 - **R6:** With `--sources web`, a query about trials gives `intent=web`, on the model path and on the fallback path. With `--sources auto`, the current rule decides `intent`. `--tone executive` gives `audience=executives` over a model value. `--exclude-domain a.com --denylist seo` gives two notes that name the hosts, after the model entries. `--include-domain a.com` gives one restriction note. A note equal to a model entry appears once.
-- **R7:** At node level, the fake Exa client records the filters on the scout web leg, the scout publication leg, `exa_search` and `exa_publication_search`, and none on people and company calls. At client level, the raw publication body holds `includeDomains`, `excludeDomains` and `startPublishedDate`, and the degraded path passes the snake-case arguments. With no filter set, no filter key is sent. `--exclude-domain quora.com --denylist seo` sends `quora.com` once. With a seed instant of 2026-09-21T01:00Z, `--since week` sends `2026-09-14`, `month` sends `2026-08-22` and `year` sends `2025-09-21`.
+- **R7:** At node level, the fake Exa client records the filters on the scout web leg, the scout publication leg, `exa_search` and `exa_publication_search`. It records no filter on a people call or a company call. At client level, the raw publication body holds `includeDomains`, `excludeDomains` and `startPublishedDate`, and the degraded path passes the snake-case arguments. With no filter set, no filter key is sent. `--exclude-domain quora.com --denylist seo` sends `quora.com` once. With a seed instant of 2026-09-21T01:00Z, `--since week` sends `2026-09-14`, `month` sends `2026-08-22` and `year` sends `2025-09-21`.
 - **R8:** A filtered empty `exa_search` gives `lane web: no sources (filters: exclude, recency)` in `Finding.gaps` and in `uncovered`, and the graph reaches END. A filtered lane whose tool loop fails before any attempt gets the suffix. `no new sources` gets the suffix. `--denylist social` alone gives `(filters: exclude)`. An unfiltered lane and a people lane keep their current text.
 - **R9:** The captured `PLAN` and `RESEARCH_SYS` prompts hold the primary-source text only with `prefer_primary`. `PLAN` holds the news line only with `news_bias`. `RESEARCH_SYS` holds the primary-source text on every lane. The news line is the same with and without `recency`. The Exa arguments do not change.
 - **R10:** `--clarify skip` gives `clarify_needed=false` with no router call. `ExactState` has no `skip_clarify` channel. With `--clarify prefer`, the captured `DECIDE_CLARIFY` prompt holds the ask sentence and not the skip sentence. An ungrounded question still skips.

@@ -28,18 +28,8 @@ The point is risk reduction. Any phase that fails this test means the team has a
 
 ## Canonical plan artifact contract
 
-When this skill writes `.claude/artifacts/plan/<topic>/plan.md`, each phase uses this structure:
-
-```markdown
-### Phase N — <title>
-**Goal:** <observable result>
-**Stop condition:** <safe-to-ship state>
-**Owns files:** `path`, `path`
-**Provides:** <cross-phase contract or None>
-**Acceptance criteria:**
-- [ ] <phase behavior>
-- [ ] Full integration gate passes: `make check`
-```
+`/plan` owns the artifact format. Its § Output shape holds the one copy of the phase block, and
+only `/plan` writes that path.
 
 Phase numbers start at 1 without gaps. Task numbers use the phase number, such as `Task 1.1`.
 Owned files are unique across phases. The final acceptance criterion is the full integration gate.

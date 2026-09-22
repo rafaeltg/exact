@@ -363,16 +363,23 @@ def _code_line_count(
     return count
 
 
-def _over_budget(
+def _metrics(
     func: ast.FunctionDef | ast.AsyncFunctionDef, lines: list[str]
 ) -> dict[str, int]:
-    """Every budget this function exceeds, as {metric name: measured value}."""
-    measured = {
+    """Every budgeted metric of one function, as {metric name: measured value}."""
+    return {
         "cyclomatic complexity": _cyclomatic_complexity(func),
         "function length": _code_line_count(func, lines),
         "nesting depth": _max_nesting(func, 0),
         "parameters": _parameter_count(func),
     }
+
+
+def _over_budget(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, lines: list[str]
+) -> dict[str, int]:
+    """Every budget this function exceeds, as {metric name: measured value}."""
+    measured = _metrics(func, lines)
     return {name: value for name, value in measured.items() if value > _LIMITS[name]}
 
 
@@ -643,17 +650,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="complexity-guard.py")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--pre", action="store_true")
+    parser.add_argument("--report", metavar="FILE")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         # argparse exits 2 on a usage error and 0 on --help. Keep --help at
         # 0; anything else becomes 1, never 2.
         raise SystemExit(0 if exc.code == 0 else 1) from exc
-    if args.check and args.pre:
-        print("error: pass only one of --check or --pre", file=sys.stderr)
-        raise SystemExit(1)
-    if not args.check and not args.pre:
-        print("error: pass --check or --pre", file=sys.stderr)
+    modes = (args.check, args.pre, args.report is not None)
+    if sum(modes) != 1:
+        print("error: pass one of --check, --pre or --report", file=sys.stderr)
         raise SystemExit(1)
     return args
 
@@ -715,6 +721,38 @@ def _debt_lines(functions: Functions) -> list[str]:
         for func_name, metrics in sorted(entries.items())
         for metric, value in sorted(metrics.items())
     ]
+
+
+def _report_lines(path: Path, source: bytes) -> list[str]:
+    """One line per function: each measured metric against its budget."""
+    tree = ast.parse(source, filename=str(path))
+    lines = _source_lines(source)
+    return [
+        f"{name} (line {func.lineno}): "
+        + ", ".join(
+            f"{metric} {value}/{_LIMITS[metric]}"
+            for metric, value in _metrics(func, lines).items()
+        )
+        for name, func in _collect_functions(tree)
+    ]
+
+
+def report(path: Path) -> int:
+    """Print the budget headroom of every function in one file.
+
+    A reader that needs these numbers otherwise reads this whole file to
+    estimate them, and then restates the budgets somewhere they can drift.
+    """
+    if _is_exempt_file(path):
+        print(f"complexity-report: {path} is exempt from the budgets")
+        return 0
+    try:
+        lines = _report_lines(path, path.read_bytes())
+    except (OSError, SyntaxError, ValueError) as exc:
+        print(f"complexity-report: cannot measure {path}: {exc}", file=sys.stderr)
+        return 1
+    print("\n".join(lines) or f"complexity-report: {path} declares no function")
+    return 0
 
 
 def _require_gate_interpreter() -> None:
@@ -878,7 +916,7 @@ if __name__ == "__main__":
         if mode.pre:
             sys.exit(pre_main())
         _require_gate_interpreter()
-        sys.exit(check())
+        sys.exit(report(Path(mode.report)) if mode.report else check())
     try:
         sys.exit(main())
     except Exception as _exc:  # noqa: BLE001

@@ -1,8 +1,8 @@
 ---
 description: >
   Write or update docs/specs/<topic>.md — a repository-grounded specification that /plan consumes.
-  Subagents collect the evidence and hunt the gaps. The main agent asks the product questions, one
-  at a time, and writes the document. Never chooses a behavior answer for the user.
+  Subagents collect the evidence and hunt the gaps. The main agent asks the product questions and
+  writes the document. Never chooses a behavior answer for the user.
 argument-hint: "<topic-slug> <rough request or repository-relative input path>"
 allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Agent, Task, SendMessage, Skill, Bash(make spec-check*), Bash(make spec-check-ready*), Bash(git status*)
 disable-model-invocation: true
@@ -50,24 +50,22 @@ Send the agents in one block when their questions are independent.
 2. **`web-researcher`, only for a fact the repository cannot hold.** A vendor contract, a library
    semantic, a protocol rule, or prior art. The agent has no filesystem access. Give it a
    self-contained question. Do not send it a repository path.
-3. Record each returned repository reference as an `E<n>` line: `repo:<path>`,
-   `repo:<path>#L<n>`, or `repo:<path>::<symbol>`. Record each returned source as
-   `url:https://…`. A decision the user takes alone is `person-decision`.
-4. **A reference the gate cannot resolve is a defect.** The path must exist. The line must be
-   inside the file. Check a suspect reference with `Read` before you write it. Do not combine
-   `#L<n>` and `::<symbol>` in one reference.
-5. **Cite tracked files only.** `spec-check-ready` resolves evidence against `HEAD`, not against
-   the worktree. A reference to an untracked or ignored file passes `spec-check` and fails later.
+3. Record each returned reference as an `E<n>` line. § Document structure owns the grammar. Check
+   a suspect reference with `Read` before you write it.
+4. **A statement from the input document is `person-decision`.** Never cite the input as `repo:`
+   evidence. A brief is deleted once the work lands, and the specification then fails its gate
+   long after this run.
 
 ## Phase 2 — Write the draft
 
-Write `docs/specs/<topic>.md` with `Status: Draft`. Use the structure in **Document structure**.
-Write it in ASD-STE100 Simplified Technical English. Keep instruction sentences to 20 words or
-fewer. Keep descriptive sentences to 25 or fewer.
+Write `docs/specs/<topic>.md` with `Status: Draft`, and write it with `Write` or `Edit` only. **A
+Bash write skips the gate hook.** Use the structure in **Document structure**. Write in ASD-STE100
+Simplified Technical English (`AGENTS.md`). The gate limits a sentence to 25 words. Keep an
+instruction to 20.
 
 Write the behavior you can prove. Write every gap as an open question. Do not fill a gap.
 
-Run `make spec-check FILE=docs/specs/<topic>.md`. Repair every finding.
+The post-write hook runs `spec-check` after each write. Repair every finding it reports.
 
 ## Phase 3 — Find the gaps in the draft
 
@@ -92,8 +90,10 @@ It returns the contract restatement and the gap list.
 
 ## Phase 4 — Ask the product questions (hard gate)
 
-1. **Ask one question per `AskUserQuestion` call.** One product fact per question. At most four
-   options.
+1. **Ask up to four questions in one `AskUserQuestion` call.** Batch two questions only when
+   their `Affects` sets do not overlap, and when no answer in the batch can change another
+   question in it. Ask a coupled question alone, after the answer it depends on. One product fact
+   per question. At most four options.
 2. **Cite repository evidence in every question.** Give the `E<n>` id, or the `path#L<n>`. A
    question without evidence is a guess.
 3. Put the option the gap finder marked `(default)` first. Label it `(Recommended)`.
@@ -103,32 +103,32 @@ It returns the contract restatement and the gap list.
    Cite the strongest single reference.
 6. **Repeat the repository comparison after an answer changes behavior.** Send
    `codebase-pattern-finder` again for the affected area. Send the gap finder again when the
-   answer opens a new surface. A later answer can contradict an earlier requirement.
+   answer opens a new surface. A later answer can contradict an earlier requirement, and it can
+   invalidate a question you asked in the same batch. Ask that question again.
 7. Keep every unanswered gap as a `### Q<n>` entry in `## Open questions`.
 8. When `AskUserQuestion` is unavailable, leave `Status: Draft`, write the `Q<n>` entries, and
    **STOP**. Do not proceed on an unanswered gap.
 
 ## Phase 5 — Write and validate
 
-1. Write the complete document after each answer block. Run
-   `make spec-check FILE=docs/specs/<topic>.md` after each complete write. Repair every finding
-   before the next question.
+1. Apply each answer with `Edit`: add the `D<n>` entry, and delete the `Q<n>` entry it settles.
+   Question IDs are unique, never contiguous, so the survivors keep their numbers. The hook runs
+   `spec-check` after each edit. Repair its findings before the next question.
 2. **An update is append-only in its identifiers.** Never renumber `R<n>`, `D<n>`, or `E<n>`.
    Never delete one. Retire a requirement or a decision with `superseded by R<n>` or
    `superseded by D<n>`, and point at a later active entry.
-3. **Increase `Revision` when the document differs from `HEAD`.** The gate compares against
-   `HEAD` and rejects a stale revision.
-4. `TBD`, `TODO`, and "to be decided" are rejected outside a fenced example. An unknown belongs in
-   `## Open questions`.
-5. Every active requirement needs at least one acceptance criterion, in every status. An
-   acceptance criterion may not name a superseded requirement.
+3. **Increase `Revision` when the document differs from `HEAD`.**
+4. An unknown belongs in `## Open questions`, never in a `TBD` marker.
+5. Every active requirement needs at least one acceptance criterion, in every status.
+6. Run `make spec-check FILE=docs/specs/<topic>.md` once, after the last edit. The hook fails
+   open, so its silence is not proof.
 
 ## Phase 6 — The Ready gate
 
 1. Set `Status: Ready` only when `## Open questions` holds exactly `None.`
-2. `make spec-check-ready FILE=docs/specs/<topic>.md` needs a committed document, a clean tracked
-   worktree, and no difference from `HEAD`. Run it only after the commit. It fails before that,
-   and the failure is correct.
+2. `make spec-check-ready FILE=docs/specs/<topic>.md` needs `Status: Ready`, the committed
+   document, a clean tracked worktree, and no difference from `HEAD`. It passes only after the
+   commit, and Phase 7 hands that step to the user.
 
 ## Phase 7 — Report
 
@@ -191,12 +191,9 @@ Superseded by: None | docs/specs/<topic>.md
 `Affects` is a list: known `R` and `D` identifiers, separated by `, `. `Evidence` is never a
 list.
 
-## Remember
+An evidence value is one of these:
 
-- You write **one** file: `docs/specs/<topic>.md`. Never `assumptions.md`, `gaps.md`, or
-  `contract.md`. `/plan` owns its own directory.
-- The agents read. You ask, and you write.
-- A product answer from an agent is a defect. The user owns every behavior decision.
-- A gap you filled yourself is a defect. Write it as a `Q<n>` entry.
-- An unresolvable evidence reference is a defect. The gate finds it. Find it first.
-- `Status: Ready` with an open question is a defect. The gate rejects it.
+- `repo:<path>`, `repo:<path>#L<n>`, or `repo:<path>::<symbol>`. Never combine `#L<n>` and
+  `::<symbol>`. **The path must be tracked by Git**, and the line must be inside the file.
+- `url:https://…` for a web source.
+- `person-decision` for a statement the user made, and for anything the repository cannot hold.

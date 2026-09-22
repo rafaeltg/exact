@@ -38,8 +38,14 @@ before disk; after an allowed write, `afterFileEdit` runs
 `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. A write under
 `.claude/artifacts/plan/` also runs `scripts/hooks/post-plan.sh` →
 `make plan-check FILE=…`, which reports every path, `TEST=` path, `K=` name
-and `make` target the plan claims but the tree does not carry. That hook
-reports; it never denies.
+and `make` target the plan claims but the tree does not carry. It drops the
+findings a half-written plan always carries — a phase or a requirement with
+no task yet — so only real findings reach you. A write under `docs/specs/`
+runs `scripts/hooks/post-spec.sh` the same way. In Claude Code, `.claude/settings.json` also registers both, and runs
+`scripts/hooks/post-bash.sh` after a `Bash` call: it re-runs the complexity,
+specification and plan gates over what the shell changed, because a redirect
+or `sed -i` never reaches the `Write` hook. All of them report; none of them
+denies.
 
 ## 2. Tests
 

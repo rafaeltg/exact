@@ -206,3 +206,109 @@ def test_revision_increase_compares_numbers(repo: Path) -> None:
     _git(repo, "commit", "-qam", "revision 9")
     spec.write_text(_SPEC.replace("Revision: 1", "Revision: 10"), encoding="utf-8")
     assert guard.check_file(spec) == []
+
+
+def test_ready_mode_rejects_a_committed_draft(repo: Path) -> None:
+    """Ready mode is the gate `/plan` trusts: a Draft document is not ready."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC.replace("Status: Ready", "Status: Draft"), encoding="utf-8")
+    _git(repo, "commit", "-qam", "draft")
+    findings = guard.check_file(spec, "ready")
+    assert any("ready specification requires Status: Ready" in f for f in findings)
+
+
+def test_question_ids_need_not_be_contiguous(repo: Path) -> None:
+    """An answered question is deleted, so the surviving IDs hold gaps."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(
+        _SPEC.replace("Status: Ready", "Status: Draft").replace(
+            "None.",
+            "### Q1 — First choice\n- **Affects:** R1\n- **Evidence:** E1\n\n"
+            "### Q3 — Third choice\n- **Affects:** R1\n- **Evidence:** E1",
+        ),
+        encoding="utf-8",
+    )
+    assert not any("contiguous" in f for f in guard.check_file(spec))
+
+
+def test_repeated_question_id_is_rejected(repo: Path) -> None:
+    """Two entries cannot share one question ID."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(
+        _SPEC.replace("Status: Ready", "Status: Draft").replace(
+            "None.",
+            "### Q1 — First choice\n- **Affects:** R1\n- **Evidence:** E1\n\n"
+            "### Q1 — Repeated choice\n- **Affects:** R1\n- **Evidence:** E1",
+        ),
+        encoding="utf-8",
+    )
+    assert any("question IDs are not unique" in f for f in guard.check_file(spec))
+
+
+def test_requirement_ids_stay_contiguous(repo: Path) -> None:
+    """The append-only rule for requirements survives the question change."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(
+        _SPEC.replace("### R1 — The behavior is available", "### R2 — The behavior"),
+        encoding="utf-8",
+    )
+    assert any(
+        "requirement IDs are not contiguous" in f for f in guard.check_file(spec)
+    )
+
+
+def test_untracked_evidence_path_is_rejected(repo: Path) -> None:
+    """`spec-check-ready` resolves evidence against HEAD, so untracked fails later."""
+    (repo / "untracked.md").write_text("later\n", encoding="utf-8")
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC.replace("README.md#L1", "untracked.md#L1"), encoding="utf-8")
+    findings = guard.check_file(spec)
+    assert any("evidence path is not tracked: untracked.md" in f for f in findings)
+
+
+def test_staged_evidence_path_is_tracked(repo: Path) -> None:
+    """A newly staged evidence file counts: the index is what the commit carries."""
+    (repo / "staged.md").write_text("soon\n", encoding="utf-8")
+    _git(repo, "add", "staged.md")
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC.replace("README.md#L1", "staged.md#L1"), encoding="utf-8")
+    assert not any("not tracked" in f for f in guard.check_file(spec))
+
+
+def test_sentence_over_the_word_limit_is_rejected(repo: Path) -> None:
+    """A descriptive sentence stays inside the ASD-STE100 limit of 25 words."""
+    spec = repo / "docs/specs/demo.md"
+    long_sentence = "The command returns " + " ".join(f"word{n}" for n in range(24))
+    spec.write_text(
+        _SPEC.replace("Provide one observable behavior.", long_sentence + "."),
+        encoding="utf-8",
+    )
+    assert any("sentence is over 25 words" in f for f in guard.check_file(spec))
+
+
+def test_comma_separated_code_spans_count_as_one_word(repo: Path) -> None:
+    """A list of code spans is one term, not one word per span."""
+    spec = repo / "docs/specs/demo.md"
+    spans = ", ".join(f"`value{n}`" for n in range(24))
+    spec.write_text(
+        _SPEC.replace(
+            "Provide one observable behavior.", f"The command takes {spans}."
+        ),
+        encoding="utf-8",
+    )
+    assert not any("over 25 words" in f for f in guard.check_file(spec))
+
+
+def test_unclosed_fence_is_rejected(repo: Path) -> None:
+    """An unclosed fence would mask every sentence after it."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC + "\n```text\nnot closed\n", encoding="utf-8")
+    assert any("unclosed code fence" in f for f in guard.check_file(spec))
+
+
+def test_unclosed_fence_names_the_cause_not_the_symptom(repo: Path) -> None:
+    """An unclosed fence swallows the sections after it. Say why they vanished."""
+    spec = repo / "docs/specs/demo.md"
+    spec.write_text(_SPEC.replace("## Decisions", "```text\n\n## Decisions"), "utf-8")
+    findings = guard.check_file(spec)
+    assert any("unclosed code fence" in finding for finding in findings)

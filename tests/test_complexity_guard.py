@@ -498,6 +498,52 @@ def test_check_and_pre_are_the_gate_modes() -> None:
     """`--check` merges; `--pre` denies before write. Both are first-class."""
     assert guard.parse_args(["--check"]).check is True
     assert guard.parse_args(["--pre"]).pre is True
+    assert guard.parse_args(["--report", "a.py"]).report == "a.py"
+
+
+# ── Budget report (--report) ──────────────────────────────────────────
+
+
+def test_report_prints_every_metric_against_its_budget(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A reader gets the headroom without reading the guard or the budgets."""
+    target = tmp_path / "app.py"
+    target.write_text(
+        "def small(one, two):\n    if one:\n        return two\n    return one\n",
+        encoding="utf-8",
+    )
+
+    assert guard.report(target) == 0
+
+    out = capsys.readouterr().out
+    assert "small (line 1): " in out
+    assert "cyclomatic complexity 2/10" in out
+    assert "function length 4/40" in out
+    assert "nesting depth 1/3" in out
+    assert "parameters 2/6" in out
+
+
+def test_report_names_an_exempt_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A test file has no budget, and silence would read as no debt."""
+    target = tmp_path / "test_app.py"
+    target.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    assert guard.report(target) == 0
+    assert "exempt from the budgets" in capsys.readouterr().out
+
+
+def test_report_fails_on_a_file_it_cannot_measure(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A parse error is a failure, never an empty report that reads as clean."""
+    target = tmp_path / "broken.py"
+    target.write_text("def f(:\n", encoding="utf-8")
+
+    assert guard.report(target) == 1
+    assert "cannot measure" in capsys.readouterr().err
 
 
 def test_check_and_pre_cannot_combine() -> None:

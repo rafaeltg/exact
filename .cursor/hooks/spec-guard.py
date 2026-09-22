@@ -56,6 +56,21 @@ _EVIDENCE_LINE = re.compile(r"^- E([1-9][0-9]*): (.+)$")
 _ACCEPTANCE = re.compile(r"^- \*\*(R[1-9][0-9]*(?:, R[1-9][0-9]*)*):\*\* (.+)$")
 _DRAFT_MARKER = re.compile(r"\b(?:TBD|TODO)\b|\bto be decided\b", re.IGNORECASE)
 
+# ASD-STE100 sentence length. `plan-guard.py` carries the same block helpers and
+# the same limit: the two guards share no module, as their Git helpers do not.
+MAX_SENTENCE_WORDS = 25
+_HEADING_LINE = re.compile(r"^#{1,6} ")
+_LIST_MARKER = re.compile(r"^\s*(?:[-*+]\s+(?:\[[ x]\]\s+)?|[0-9]+\.\s+)")
+_FIELD_LABEL = re.compile(r"^\*\*[^*]+:\*\*")
+# An indented code block and a table row are not prose. Counting their tokens
+# as words reports a sentence nobody wrote.
+_NOT_PROSE = re.compile(r"^(?:\s{4,}\S|\s*\|)")
+# A run of comma-separated code spans is one term. Counting one word per span
+# reports `a`, `b`, `c`… as a long sentence, which it is not.
+_CODE_RUN = re.compile(r"`[^`]*`(?:\s*,\s*`[^`]*`)*")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_WORD = re.compile(r"[0-9A-Za-z]")
+
 
 @dataclass(frozen=True)
 class Evidence:
@@ -162,6 +177,71 @@ def _strip_fences(lines: list[str]) -> list[str | None]:
         else:
             masked.append(None if fenced else line)
     return masked
+
+
+def _starts_block(line: str | None) -> bool:
+    """Return whether the line cannot continue the block before it."""
+    if line is None or not line.strip():
+        return True
+    return bool(
+        _HEADING_LINE.match(line.strip())
+        or _LIST_MARKER.match(line)
+        or _FIELD_LABEL.match(line)
+        or _NOT_PROSE.match(line)
+    )
+
+
+def _field_text(line: str) -> str:
+    """One line without its list marker and its field label."""
+    return _FIELD_LABEL.sub("", _LIST_MARKER.sub("", line).strip()).strip()
+
+
+def _is_prose(line: str | None) -> bool:
+    """Return whether the line carries sentence text of its own."""
+    if line is None or not line.strip():
+        return False
+    return not _HEADING_LINE.match(line.strip()) and not _NOT_PROSE.match(line)
+
+
+def _text_blocks(lines: list[str | None]) -> list[str]:
+    """Join wrapped prose lines into blocks. Headings carry no sentence."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        if _starts_block(line) and current:
+            blocks.append(" ".join(current))
+            current = []
+        if _is_prose(line):
+            current.append(_field_text(line or ""))
+    if current:
+        blocks.append(" ".join(current))
+    return blocks
+
+
+def _fence_errors(lines: list[str]) -> list[str]:
+    """Report a fence that never closes.
+
+    `_strip_fences` masks every line after an unclosed fence, so the sentence
+    rules would silently stop applying. Silence is this guard's worst failure.
+    """
+    opened = sum(1 for line in lines if line.startswith("```"))
+    return ["unclosed code fence"] if opened % 2 else []
+
+
+def _word_count(sentence: str) -> int:
+    """Count STE words. A run of code spans is one word; punctuation is none."""
+    masked = _CODE_RUN.sub("code", sentence)
+    return sum(1 for token in masked.split() if _WORD.search(token))
+
+
+def _sentence_errors(text: str) -> list[str]:
+    """Report every sentence over the ASD-STE100 descriptive limit."""
+    return [
+        f"sentence is over {MAX_SENTENCE_WORDS} words ({count}): {sentence[:60]}"
+        for block in _text_blocks(_strip_fences(text.splitlines()))
+        for sentence in _SENTENCE_SPLIT.split(block)
+        if (count := _word_count(sentence)) > MAX_SENTENCE_WORDS
+    ]
 
 
 def _section_headings(lines: list[str | None]) -> list[tuple[int, str]]:
@@ -325,7 +405,6 @@ def _entries(
         entries, errors = _finish_entry(
             entries, errors, current_number, body, fields, label
         )
-    errors.extend(_sequence([entry.number for entry in entries], label))
     return entries, errors
 
 
@@ -458,7 +537,12 @@ def _parse_acceptance(lines: list[str | None]) -> tuple[list[list[int]], list[st
 
 
 def _parse_questions(lines: list[str | None]) -> tuple[list[Entry], list[str]]:
-    """Parse open questions with their requirement and decision impact."""
+    """Parse open questions with their requirement and decision impact.
+
+    Question IDs are unique, never contiguous. An answered question leaves the
+    section, and renumbering the survivors would rewrite the open questions of
+    every later run. `R<n>`, `D<n>` and `E<n>` stay append-only and contiguous.
+    """
     content = [line for line in lines if line]
     if content == ["None."]:
         return [], []
@@ -466,7 +550,11 @@ def _parse_questions(lines: list[str | None]) -> tuple[list[Entry], list[str]]:
         "affects": re.compile(r"^- \*\*Affects:\*\* (.+)$"),
         "evidence": _EVIDENCE_FIELD,
     }
-    return _entries(lines, _QUESTION_HEADING, fields, "question")
+    questions, errors = _entries(lines, _QUESTION_HEADING, fields, "question")
+    numbers = [entry.number for entry in questions]
+    if len(numbers) != len(set(numbers)):
+        errors.append("question IDs are not unique")
+    return questions, errors
 
 
 def _parse_sections(
@@ -479,6 +567,7 @@ def _parse_sections(
         {"status": _REQ_STATUS, "behavior": _BEHAVIOR},
         "requirement",
     )
+    errors.extend(_sequence([entry.number for entry in requirements], "requirement"))
     decisions, found = _entries(
         lines[slice(*ranges["Decisions"])],
         _DEC_HEADING,
@@ -492,6 +581,7 @@ def _parse_sections(
         "decision",
     )
     errors.extend(found)
+    errors.extend(_sequence([entry.number for entry in decisions], "decision"))
     evidence, found = _parse_evidence(lines[slice(*ranges["Repository evidence"])])
     errors.extend(found)
     acceptance, found = _parse_acceptance(lines[slice(*ranges["Acceptance criteria"])])
@@ -761,6 +851,10 @@ def _working_evidence_path_error(root: Path, path: str) -> str | None:
         resolved.relative_to(root)
     except (OSError, ValueError):
         return f"evidence path escapes the repository: {path}"
+    # `--ready` resolves evidence against HEAD. An untracked path passes here
+    # and fails the ready gate later, after the specification is committed.
+    if not _tracked(root, path):
+        return f"evidence path is not tracked: {path}"
     return None
 
 
@@ -934,11 +1028,18 @@ def _snapshot_file_errors(root: Path, relative: str, mode: str) -> list[str]:
 
 
 def _parse_snapshot(data: bytes) -> tuple[ParsedSpec | None, list[str]]:
-    """Decode and parse one specification snapshot."""
+    """Decode and parse one specification snapshot.
+
+    The fence check runs with the parse, never after it. An unclosed fence
+    swallows the sections that follow, so the parse reports them as missing.
+    That finding names a symptom; this one names the cause.
+    """
     try:
-        return _parse_spec(data.decode("utf-8"))
+        text = data.decode("utf-8")
     except UnicodeDecodeError:
         return None, ["specification is not UTF-8"]
+    parsed, errors = _parse_spec(text)
+    return parsed, _fence_errors(text.splitlines()) + errors
 
 
 def _comparison_errors(
@@ -973,6 +1074,9 @@ def check_file(path: Path, mode: str = "working", nested: bool = False) -> list[
     findings.extend(errors)
     if parsed is None:
         return findings
+    findings.extend(_sentence_errors(data.decode("utf-8")))
+    if mode == "ready" and parsed.metadata["Status"] != "Ready":
+        findings.append("ready specification requires Status: Ready")
     if parsed.metadata.get("Topic") != Path(relative).stem:
         findings.append("Topic does not match filename")
     evidence = parsed.evidence + _inline_evidence(parsed.decisions + parsed.questions)

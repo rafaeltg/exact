@@ -17,21 +17,14 @@ The phase already exists when this skill applies. Slicing decisions (where phase
 
 ## Canonical plan artifact contract
 
-When this skill writes `.claude/artifacts/plan/<topic>/plan.md`, use these fields in this order:
+`/plan` owns the artifact format. Its § Output shape holds the one copy of the task block, and
+only `/plan` writes that path.
 
-```markdown
-### Task N.n — <title>
-**Decisions:** D1, D2
-**Do:** <complete implementation instruction>
-**Files:** create: `path` | modify: `path`
-**Provides:** test: `tests/test_x.py::test_name` | make-target: `target`
-**Verify:** `make test TEST=tests/test_x.py K=test_name`
-```
-
-Keep every field on one physical line. Use `None` only for `Decisions` or `Provides`.
-`Files` must contain one or more paths. A `Verify` field contains one simple backticked `make`
-command. Do not use shell operators, Make options, a second target, or boolean `K=` expressions.
-A later task may consume a path, test, or target provided by an earlier task.
+Keep every field on one physical line. Use `None` only for `Decisions`, `Requirements` or
+`Provides`. `Files` must contain one or more paths. A `Verify` field contains one simple
+backticked `make` command. Do not use shell operators, Make options, a second target, or boolean
+`K=` expressions. A later task may consume a path, test, or target provided by an earlier task.
+Each task cites the active requirements it serves, and each active requirement needs a task.
 
 ## What a good task looks like
 
@@ -200,6 +193,7 @@ Before finalizing a plan:
 - [ ] Code changes and their tests live in the same task — never separated.
 - [ ] No planned-red language anywhere — no "will fail until", "atomic batch", "placeholder", "expected to fail".
 - [ ] Every task has at least one `create` or `modify` Files entry — no verification-only tasks.
+- [ ] Every task cites the requirements it serves, and every active requirement has a task.
 - [ ] Do fields name file paths, function signatures, parameter and return types, and key logic.
 - [ ] Verify commands are targeted at the task's specific test, not generic runners.
 - [ ] Phase Acceptance Criteria include a broad integration gate exactly as `- [ ] Full integration gate passes: \`<command>\``.

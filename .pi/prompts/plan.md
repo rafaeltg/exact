@@ -12,17 +12,15 @@ If a product decision is missing, stop and return the requirement and repository
 
 Before writing:
 
-1. Validate `$1` with `^[a-z0-9][a-z0-9._-]*$`.
-2. Run `make spec-check-ready FILE=docs/specs/$1.md`.
-3. Require a clean tracked repository and no non-ignored untracked files.
-4. Require `docs/specs/$1.md` to be tracked and unchanged from `HEAD`.
-5. Create `.claude/artifacts/plan/$1/.spec-plan-v1` with exactly `version=1` and a final newline.
-6. Stop when the topic directory exists without that marker or has mismatched plan metadata.
-7. Load `phase-slicing` before drawing phases.
-8. Load `task-structuring` before writing tasks.
+1. Run `make plan-init TOPIC=$1`. Stop on any finding.
+2. It gates the slug, the Ready specification, the tree and the topic directory. It writes the
+   workflow marker and prints the five metadata lines of the plan head.
+3. Ask whether to replace the plan when it reports a stale topic directory.
+4. Load `phase-slicing` before drawing phases.
+5. Load `task-structuring` before writing tasks.
 
 Write only `.claude/artifacts/plan/$1/plan.md` and, after independent review, `review.md`.
-Compute the specification SHA-256 from its raw bytes. Record the current 40-character `HEAD` ID.
+Copy the metadata lines that `make plan-init` printed. Do not recompute them.
 Use the exact plan format below. Keep all task fields on one physical line.
 
 ```markdown
@@ -53,6 +51,7 @@ Date: <YYYY-MM-DD>
 
 ### Task 1.1 — <title>
 **Decisions:** D1, D2
+**Requirements:** R1, R3
 **Do:** <complete implementation instruction>
 **Files:** create: `path` | modify: `path`
 **Provides:** test: `tests/test_x.py::test_name` | make-target: `target`
@@ -61,7 +60,8 @@ Date: <YYYY-MM-DD>
 
 Rules:
 
-- Every task has `Decisions`, `Do`, `Files`, `Provides`, and `Verify`.
+- Every task has `Decisions`, `Requirements`, `Do`, `Files`, `Provides`, and `Verify`.
+- Every active requirement of the specification needs at least one task that cites it.
 - Use one simple backticked `make` Verify command. Do not use shell operators or Make options.
 - `K=` is one identifier. Do not use boolean pytest expressions.
 - A task may consume a file, test, or Make target from the baseline or an earlier task.

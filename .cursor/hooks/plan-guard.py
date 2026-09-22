@@ -1,35 +1,43 @@
 #!/usr/bin/env python3
-"""`.cursor/hooks/plan-guard.py` — check that a plan artifact's references resolve.
+"""`.cursor/hooks/plan-guard.py` — gate one canonical `/plan` artifact.
 
 A plan that names a file, a test or a `make` target that does not exist ships a
-bug no gate catches: the implementer follows the plan and the command fails.
-`/plan` Phase 6 asks an LLM reviewer to verify those rows with Glob and Grep.
-A program does the mechanical half faster and never skips a row.
+bug no gate catches: the executor follows the plan and the command fails. A
+program checks that half faster than a reviewer, and never skips a row.
 
-Checked, per `**Verify:**` command:
+Two modes. Both are complete-document gates:
 
-- every `make <target>` is a target in `Makefile`
-- a `TEST=` path is `tests` or under `tests/`, and exists
-- a `path::name` selector names a test under that path, matched exactly
-- every identifier in `K=` is a **substring** of at least one `def test_*` name
-  under the `TEST=` path. Pytest `-k` is a substring match, so
-  `K=test_academic_signal` is satisfied by
-  `test_academic_signal_is_true_for_spec_heuristics`.
+* ``--check <plan.md>`` validates one plan at
+  `.claude/artifacts/plan/<topic>/plan.md`: the `.spec-plan-v1` marker, a clean
+  repository, the metadata block, the phase and task grammar, sentence length,
+  the recorded specification, and any `review.md` beside the plan.
+* ``--init <topic>`` gates the inputs before a plan is written: the topic slug,
+  the ready specification gate, a clean tree, and the state of the topic
+  directory. It writes the marker and prints the metadata lines of the plan
+  head. A directory that holds a plan for another specification is `stale`: the
+  mode reports the state and leaves the replacement decision to the user.
 
-Checked, per `**Files:**` field: a `modify:` path exists, a `create:` path does
-not.
+Checked against the recorded `HEAD`, per task:
 
-Not checked: the symbols a Do field names, and the semantics of any row. Those
-stay with the `/plan` Phase 6 reviewer.
+- a `modify:` path exists in that commit, or an earlier task creates it. A
+  `create:` path exists in neither
+- every cited `D<n>` and `R<n>` is active in the specification, and every
+  active `R<n>` has at least one task
+- a `Verify` names one Make target, and one `TEST=` path, `::selector` and `K=`
+  name. Each resolves in that commit, or an earlier task provides it. `K=` is a
+  **substring** match, as pytest's own `-k` is: `K=test_academic_signal` is
+  satisfied by `test_academic_signal_is_true_for_spec_heuristics`
+- no sentence is over 25 words, opens with filler, or admits a red tree
 
-Known limit: `create:` paths exist once execution starts. Re-running the guard
-against a plan whose Phase 1 has landed reports those paths as findings. The
-hook reports; it never denies. Read the report against execution state.
+Not checked: the symbols a `Do` field names, and the semantics of any row.
+Those stay with the `/plan` Phase 5 reviewer.
 
-Exit codes: 0 clean, 0 when the file is not under `.claude/artifacts/plan/` or
-cannot be read or decoded (fail open — a broken advisory hook must not freeze the
-session), 1 on a usage error, 2 when a reference does not resolve. Findings go
-to stdout, one per line, as `path:line → claim → evidence`.
+Known limit: `create:` paths exist once execution starts. The gate reads `HEAD`,
+not the worktree, so a landed Phase 1 does not turn those paths into findings.
+
+Exit codes: 0 clean, 1 on a usage or gate error, 2 on findings. Findings go to
+stdout, one per line. `scripts/hooks/post-plan.sh` reads the closing count line
+to tell findings from a broken guard, and fails open on anything else.
 """
 
 from __future__ import annotations
@@ -40,279 +48,154 @@ import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 # Only a file under this directory is a plan artifact. Anything else exits 0:
 # the hook fires on every Write, and most writes are not plans.
 PLAN_DIR = ".claude/artifacts/plan/"
 
-_VERIFY_INLINE = re.compile(r"^\*\*Verify:\*\*\s+`([^`]+)`")
-_VERIFY_OPEN = re.compile(r"^\*\*Verify:\*\*\s*$")
-_BULLET = re.compile(r"^-\s+")
-_BULLET_COMMAND = re.compile(r"^-\s+`([^`]+)`")
-_FENCE = re.compile(r"^```")
-
-_FILES_LINE = re.compile(r"^\*\*Files:\*\*\s*(.+)$")
-# Segments are separated by `|`, and a plan sometimes writes a comma instead.
-# A zero-width split before each keyword handles both.
-_FILES_SPLIT = re.compile(r"(?=\b(?:create|modify)\s*:)")
-_FILES_KIND = re.compile(r"^\s*(create|modify)\s*:\s*(.*)$", re.DOTALL)
-_BACKTICKED = re.compile(r"`([^`]+)`")
-
-# The target is the first token after `make` that is neither a flag nor a
-# variable assignment. Requiring it to open with an alphanumeric keeps
-# `make -C "$proj" plan-check` from reporting `-C` as a missing target.
-_MAKE_CALL = re.compile(
-    r"\bmake\s+(?:(?:-\S+|[A-Z0-9_]+=\S+)\s+)*([a-zA-Z0-9_.][a-zA-Z0-9_.-]*)"
+# ASD-STE100 sentence length. `spec-guard.py` carries the same block helpers and
+# the same limit: the two guards share no module, as their Git helpers do not.
+MAX_SENTENCE_WORDS = 25
+_HEADING_LINE = re.compile(r"^#{1,6} ")
+_LIST_MARKER = re.compile(r"^\s*(?:[-*+]\s+(?:\[[ x]\]\s+)?|[0-9]+\.\s+)")
+_FIELD_LABEL = re.compile(r"^\*\*[^*]+:\*\*")
+# An indented code block and a table row are not prose. Counting their tokens
+# as words reports a sentence nobody wrote.
+_NOT_PROSE = re.compile(r"^(?:\s{4,}\S|\s*\|)")
+# A run of comma-separated code spans is one term. One word per span reports a
+# list of paths as a long sentence, and that finding is false.
+_CODE_RUN = re.compile(r"`[^`]*`(?:\s*,\s*`[^`]*`)*")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_WORD = re.compile(r"[0-9A-Za-z]")
+# Anchored to a sentence start. `an exclude note that names the lane` is
+# ordinary English, and a false finding teaches the writer to skip the gate.
+_FILLER = re.compile(
+    r"^(?:note that|it is important to|keep in mind|as mentioned above)\b",
+    re.IGNORECASE,
 )
-_TEST_ASSIGN = re.compile(r"\bTEST=(\S+)")
-# `K=` may be bare or quoted: the Makefile wraps it in single quotes, so a
-# filter with spaces (`a or b`) only survives the shell when the plan quotes it.
-_K_ASSIGN = re.compile(r"""\bK=(?:'([^']*)'|"([^"]*)"|(\S+))""")
-_K_TOKENS = re.compile(r"\band\b|\bor\b|\bnot\b|[^\s()]+")
-
-# `:=` is a variable assignment, not a target.
-_MAKE_TARGET = re.compile(r"^([a-zA-Z0-9_.-]+):(?!=)")
-_DEF_TEST = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)", re.MULTILINE)
+# `task-structuring` § "No planned-red language". A task that admits a red tree
+# is two tasks, or a phase boundary in the wrong place.
+_PLANNED_RED = re.compile(
+    r"\b(?:will fail until|expected to fail|placeholder for now"
+    r"|atomic batch with|tests pass only after)\b",
+    re.IGNORECASE,
+)
 
 
-@dataclass(frozen=True)
-class PlanRef:
-    """One reference the plan makes to something in the tree."""
-
-    kind: str  # "verify" | "create" | "modify"
-    value: str
-    line: int
-
-
-def _finding(ref: PlanRef, claim: str, evidence: str) -> str:
-    """One report line, without the plan path the caller prefixes."""
-    return f"{ref.line} → {claim} → {evidence}"
-
-
-def _fenced_commands(lines: list[str], start: int) -> list[PlanRef]:
-    """Commands inside a fenced block, up to its closing fence."""
-    found: list[PlanRef] = []
-    for index in range(start, len(lines)):
-        text = lines[index].strip()
-        if _FENCE.match(text):
-            break
-        if text and not text.startswith("#"):
-            found.append(PlanRef("verify", text, index + 1))
-    return found
+def _strip_fences(lines: list[str]) -> list[str | None]:
+    """Hide fenced Markdown lines while preserving line positions."""
+    masked: list[str | None] = []
+    fenced = False
+    for line in lines:
+        if line.startswith("```"):
+            fenced = not fenced
+            masked.append(None)
+        else:
+            masked.append(None if fenced else line)
+    return masked
 
 
-def _bullet_commands(lines: list[str], start: int) -> list[PlanRef]:
-    """Commands in the bullet list that follows, up to the first non-bullet.
+def _starts_block(line: str | None) -> bool:
+    """Return whether the line cannot continue the block before it."""
+    if line is None or not line.strip():
+        return True
+    return bool(
+        _HEADING_LINE.match(line.strip())
+        or _LIST_MARKER.match(line)
+        or _FIELD_LABEL.match(line)
+        or _NOT_PROSE.match(line)
+    )
 
-    A bullet carrying prose instead of a command is skipped, never a stop:
-    stopping there would drop every later bullet and report the plan clean.
-    Silence is this guard's worst failure — `/plan` step 6 reads it as a pass.
+
+def _field_text(line: str) -> str:
+    """One line without its list marker and its field label."""
+    return _FIELD_LABEL.sub("", _LIST_MARKER.sub("", line).strip()).strip()
+
+
+def _is_prose(line: str | None) -> bool:
+    """Return whether the line carries sentence text of its own."""
+    if line is None or not line.strip():
+        return False
+    return not _HEADING_LINE.match(line.strip()) and not _NOT_PROSE.match(line)
+
+
+def _text_blocks(lines: list[str | None]) -> list[str]:
+    """Join wrapped prose lines into blocks. Headings carry no sentence."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        if _starts_block(line) and current:
+            blocks.append(" ".join(current))
+            current = []
+        if _is_prose(line):
+            current.append(_field_text(line or ""))
+    if current:
+        blocks.append(" ".join(current))
+    return blocks
+
+
+def _fence_errors(lines: list[str]) -> list[str]:
+    """Report a fence that never closes.
+
+    `_strip_fences` masks every line after an unclosed fence, so the sentence
+    rules would silently stop applying. Silence is this guard's worst failure.
     """
-    found: list[PlanRef] = []
-    for index in range(start, len(lines)):
-        text = lines[index].strip()
-        if not _BULLET.match(text):
-            break
-        match = _BULLET_COMMAND.match(text)
-        if match is not None:
-            found.append(PlanRef("verify", match.group(1), index + 1))
-    return found
+    opened = sum(1 for line in lines if line.startswith("```"))
+    return ["unclosed code fence"] if opened % 2 else []
 
 
-def _verify_block(lines: list[str], start: int) -> list[PlanRef]:
-    """Commands under a `**Verify:**` line that carries none itself."""
-    if start + 1 < len(lines) and _FENCE.match(lines[start + 1].strip()):
-        return _fenced_commands(lines, start + 2)
-    return _bullet_commands(lines, start + 1)
+def _word_count(sentence: str) -> int:
+    """Count STE words. A run of code spans is one word; punctuation is none."""
+    masked = _CODE_RUN.sub("code", sentence)
+    return sum(1 for token in masked.split() if _WORD.search(token))
 
 
-def iter_verify_commands(text: str) -> Iterator[PlanRef]:
-    """Every Verify command in the plan: inline, bullet list, or fenced block."""
+def _one_sentence_errors(sentence: str) -> list[str]:
+    """Validate one sentence against the length and phrase rules."""
+    masked = _CODE_RUN.sub("code", sentence).strip()
+    findings: list[str] = []
+    count = _word_count(sentence)
+    if count > MAX_SENTENCE_WORDS:
+        findings.append(
+            f"sentence is over {MAX_SENTENCE_WORDS} words ({count}): {sentence[:60]}"
+        )
+    if _FILLER.match(masked):
+        findings.append(f"sentence opens with filler: {sentence[:60]}")
+    found = _PLANNED_RED.search(masked)
+    if found is not None:
+        findings.append(f"planned-red language: {found.group(0)}")
+    return findings
+
+
+def _sentence_errors(text: str) -> list[str]:
+    """Report every sentence the writing rules reject."""
     lines = text.splitlines()
-    for index, line in enumerate(lines):
-        inline = _VERIFY_INLINE.match(line)
-        if inline is not None:
-            yield PlanRef("verify", inline.group(1), index + 1)
-        elif _VERIFY_OPEN.match(line):
-            yield from _verify_block(lines, index)
-
-
-def _segment_paths(chunk: str) -> list[str]:
-    """The paths in one Files segment.
-
-    A backticked span holding whitespace is a note, not a path — a plan writes
-    `(via `git mv`)` beside a real path, and reporting that as a reference is a
-    false finding.
-    """
-    return [
-        span
-        for span in _BACKTICKED.findall(chunk)
-        if not any(char.isspace() for char in span)
-    ]
-
-
-def _files_paths(field: str) -> Iterator[tuple[str, str]]:
-    """The (kind, path) pairs inside one `**Files:**` field."""
-    for segment in _FILES_SPLIT.split(field):
-        match = _FILES_KIND.match(segment)
-        if match is None:
-            continue
-        for path in _segment_paths(match.group(2)):
-            yield match.group(1), path
-
-
-def iter_files_refs(text: str) -> Iterator[PlanRef]:
-    """Every `create:` and `modify:` path in the plan."""
-    for index, line in enumerate(text.splitlines()):
-        match = _FILES_LINE.match(line)
-        if match is None:
-            continue
-        for kind, path in _files_paths(match.group(1)):
-            yield PlanRef(kind, path, index + 1)
-
-
-def _k_identifiers(raw: str) -> list[str]:
-    """The names a `-k` expression requires to exist.
-
-    A name after `not` is an exclusion. Pytest accepts it when nothing matches,
-    so requiring it would be a false finding.
-    """
-    keep: list[str] = []
-    negated = False
-    for token in _K_TOKENS.findall(raw):
-        if token == "not":
-            negated = True
-            continue
-        if token not in ("and", "or") and not negated:
-            keep.append(token)
-        negated = False
-    return keep
-
-
-def parse_test_command(command: str) -> tuple[str | None, list[str]]:
-    """The raw `TEST=` value and the `K=` names one command requires.
-
-    The value keeps any `::name` selector; `_check_test_path` splits it, because
-    a node id is matched exactly while a `K=` name is matched as a substring.
-    """
-    test = _TEST_ASSIGN.search(command)
-    value = test.group(1) if test is not None else None
-    keys = _K_ASSIGN.search(command)
-    if keys is None:
-        return value, []
-    raw = next(group for group in keys.groups() if group is not None)
-    return value, _k_identifiers(raw)
-
-
-def make_targets(makefile: Path) -> set[str]:
-    """Every target name declared at column 0 of the Makefile."""
-    if not makefile.is_file():
-        return set()
-    lines = makefile.read_text(encoding="utf-8").splitlines()
-    matches = (_MAKE_TARGET.match(line) for line in lines)
-    return {match.group(1) for match in matches if match is not None}
-
-
-def test_names(path: Path) -> set[str]:
-    """Every `def test_*` name in a file, or in the `*.py` under a directory."""
-    files = sorted(path.rglob("*.py")) if path.is_dir() else [path]
-    names: set[str] = set()
-    for file in files:
-        names.update(_DEF_TEST.findall(file.read_text(encoding="utf-8")))
-    return names
-
-
-def _check_make_targets(ref: PlanRef, targets: set[str]) -> list[str]:
-    """Findings for the `make` targets one command names."""
-    return [
-        _finding(ref, f"make {name}", "no such target in Makefile")
-        for name in _MAKE_CALL.findall(ref.value)
-        if name not in targets
-    ]
-
-
-def _check_selector(ref: PlanRef, names: set[str], selector: str) -> list[str]:
-    """The finding for a `path::name` node id, which names one test exactly."""
-    name = selector.rsplit("::", 1)[-1]
-    if not name or name in names:
-        return []
-    return [_finding(ref, f"TEST=…::{name}", "no test of that name under the path")]
-
-
-def _check_test_path(ref: PlanRef, root: Path, test: str, keys: list[str]) -> list[str]:
-    """Findings for one command's `TEST=` value and its `K=` names."""
-    path, _, selector = test.partition("::")
-    if path != "tests" and not path.startswith("tests/"):
-        return [_finding(ref, f"TEST={path}", "a TEST path is tests or under tests/")]
-    target = root / path
-    if not target.exists():
-        return [_finding(ref, f"TEST={path}", "path not found in the tree")]
-    names = test_names(target)
-    return _check_selector(ref, names, selector) + [
-        _finding(ref, f"K={key}", f"no test name under {path} contains it")
-        for key in keys
-        if not any(key in name for name in names)
-    ]
-
-
-def check_verify(ref: PlanRef, root: Path, targets: set[str]) -> list[str]:
-    """Every finding for one Verify command."""
-    findings = _check_make_targets(ref, targets)
-    test, keys = parse_test_command(ref.value)
-    if test is None:
-        return findings
-    return findings + _check_test_path(ref, root, test, keys)
-
-
-def check_files(ref: PlanRef, root: Path) -> list[str]:
-    """The finding for one `create:` or `modify:` path, if it has one."""
-    exists = (root / ref.value).exists()
-    if ref.kind == "modify" and not exists:
-        return [_finding(ref, f"modify: {ref.value}", "path not found in the tree")]
-    if ref.kind == "create" and exists:
-        return [_finding(ref, f"create: {ref.value}", "path already exists")]
-    return []
-
-
-def _label(plan: Path, root: Path) -> str:
-    """The plan path as the report prints it: relative to the root when it can be."""
-    try:
-        return plan.resolve().relative_to(root).as_posix()
-    except ValueError:
-        return plan.as_posix()
-
-
-def audit(plan: Path, root: Path) -> list[str]:
-    """Every unresolved reference in the plan, as report lines."""
-    text = plan.read_text(encoding="utf-8")
-    targets = make_targets(root / "Makefile")
-    findings = [
-        line
-        for ref in iter_verify_commands(text)
-        for line in check_verify(ref, root, targets)
-    ]
-    findings += [
-        line for ref in iter_files_refs(text) for line in check_files(ref, root)
-    ]
-    label = _label(plan, root)
-    return [f"{label}:{line}" for line in findings]
+    findings = _fence_errors(lines)
+    findings.extend(
+        finding
+        for block in _text_blocks(_strip_fences(lines))
+        for sentence in _SENTENCE_SPLIT.split(block)
+        for finding in _one_sentence_errors(sentence)
+    )
+    return findings
 
 
 def _repo_root() -> Path:
-    """Resolved, because `_label` compares it against a resolved path.
+    """Resolved, because `_strict_path` compares it against a resolved path.
 
     Mirrors `complexity-guard._repo_root`: an unresolved CLAUDE_PROJECT_DIR
     that traverses a symlink (on macOS /var and /tmp both do) makes
-    `relative_to` raise, and the report then carries absolute paths.
+    `relative_to` raise, and the gate then rejects a plan inside the tree.
     """
     root = os.environ.get("CLAUDE_PROJECT_DIR", "")
     return Path(root).resolve() if root else Path(__file__).resolve().parents[2]
 
 
 _V1_MARKER = ".spec-plan-v1"
+_CHECK_STAMP = ".plan-checked"
 _SAFE_PATH = re.compile(r"^[^/\s:]+(?:/[^/\s:]+)*$")
 _META = {
     "Spec": re.compile(r"^Spec: (docs/specs/[a-z0-9][a-z0-9._-]*\.md)$"),
@@ -321,9 +204,14 @@ _META = {
     "Repository commit": re.compile(r"^Repository commit: ([0-9a-f]{40})$"),
     "Date": re.compile(r"^Date: ([0-9]{4}-[0-9]{2}-[0-9]{2})$"),
 }
+_REQUIRED_TASK_FIELDS = frozenset(
+    ("Decisions", "Do", "Files", "Provides", "Requirements", "Verify")
+)
 _TASK_HEADING = re.compile(r"^### Task ([1-9][0-9]*)\.([1-9][0-9]*) — (.+)$")
 _PHASE_HEADING = re.compile(r"^### Phase ([1-9][0-9]*) — (.+)$")
-_FIELD = re.compile(r"^\*\*(Decisions|Do|Files|Provides|Verify):\*\* ?(.*)$")
+_FIELD = re.compile(
+    r"^\*\*(Decisions|Do|Files|Provides|Requirements|Verify):\*\* ?(.*)$"
+)
 _PHASE_FIELD = re.compile(r"^\*\*(Goal|Stop condition|Owns files|Provides):\*\* ?(.*)$")
 _VERIFY = re.compile(r"^`([^`]+)`$")
 _PROVIDED_TEST = re.compile(r"^tests/[^` ]+::test_[A-Za-z0-9_]+$")
@@ -337,9 +225,28 @@ class StrictTask:
     number: tuple[int, int]
     line: int
     decisions: str
+    requirements: str
     files: str
     provides: str
     verify: str
+
+
+@dataclass(frozen=True)
+class PlanInit:
+    """The specification facts a new plan records in its metadata block."""
+
+    topic: str
+    spec: str
+    revision: str
+    digest: str
+
+
+@dataclass(frozen=True)
+class SpecFacts:
+    """The active specification IDs a task may cite."""
+
+    decisions: set[str]
+    requirements: set[str]
 
 
 @dataclass(frozen=True)
@@ -562,9 +469,7 @@ def _strict_tasks(lines: list[str]) -> tuple[list[StrictTask], list[str]]:
         end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
         fields, found = _strict_fields(lines[index + 1 : end], _FIELD)
         errors.extend(found)
-        missing = (
-            set(("Decisions", "Do", "Files", "Provides", "Verify")) - fields.keys()
-        )
+        missing = _REQUIRED_TASK_FIELDS - fields.keys()
         errors.extend(
             f"task {match.group(1)}.{match.group(2)} missing {name}"
             for name in sorted(missing)
@@ -575,6 +480,7 @@ def _strict_tasks(lines: list[str]) -> tuple[list[StrictTask], list[str]]:
                     (int(match.group(1)), int(match.group(2))),
                     index + 1,
                     fields["Decisions"],
+                    fields["Requirements"],
                     fields["Files"],
                     fields["Provides"],
                     fields["Verify"],
@@ -784,17 +690,25 @@ def _real_section(data: str, name: str) -> list[str]:
     return lines
 
 
-def _strict_spec_decisions(root: Path, spec_path: str) -> set[str]:
-    """Read active decisions from the real Decisions section only."""
-    data = (root / spec_path).read_text(encoding="utf-8")
-    section = "\n".join(_real_section(data, "Decisions"))
-    blocks = re.split(r"^### (?=D[1-9][0-9]* — )", section, flags=re.MULTILINE)
+def _active_spec_ids(text: str, section: str, prefix: str) -> set[str]:
+    """The active entry IDs in one real specification section."""
+    body = "\n".join(_real_section(text, section))
+    blocks = re.split(rf"^### (?={prefix}[1-9][0-9]* — )", body, flags=re.MULTILINE)
     return {
-        f"D{match.group(1)}"
+        f"{prefix}{match.group(1)}"
         for block in blocks
-        if (match := re.match(r"D([1-9][0-9]*) —", block))
+        if (match := re.match(rf"{prefix}([1-9][0-9]*) —", block))
         and re.search(r"^- \*\*Status:\*\* active$", block, re.MULTILINE)
     }
+
+
+def _strict_spec_facts(root: Path, spec_path: str) -> SpecFacts:
+    """Read the active decision and requirement IDs a task may cite."""
+    text = (root / spec_path).read_text(encoding="utf-8")
+    return SpecFacts(
+        _active_spec_ids(text, "Decisions", "D"),
+        _active_spec_ids(text, "Requirements", "R"),
+    )
 
 
 def _strict_git_path(root: Path, path: str) -> bool:
@@ -977,14 +891,28 @@ def _task_provision_errors(
     return findings
 
 
-def _task_decision_errors(task: StrictTask, decisions: set[str]) -> list[str]:
-    """Validate task decision references."""
-    if task.decisions == "None":
-        return []
+def _cited_ids(raw: str) -> list[str]:
+    """The specification IDs one citation field names."""
+    return [] if raw == "None" else [value.strip() for value in raw.split(",")]
+
+
+def _task_citation_errors(
+    task: StrictTask, raw: str, label: str, known: set[str]
+) -> list[str]:
+    """Validate one task citation field against the active specification IDs."""
     return [
-        f"task {task.number}: unknown active decision {decision}"
-        for decision in (value.strip() for value in task.decisions.split(","))
-        if decision not in decisions
+        f"task {task.number}: unknown active {label} {value}"
+        for value in _cited_ids(raw)
+        if value not in known
+    ]
+
+
+def _coverage_errors(tasks: list[StrictTask], requirements: set[str]) -> list[str]:
+    """Require one task for each active requirement."""
+    cited = {value for task in tasks for value in _cited_ids(task.requirements)}
+    return [
+        f"active requirement {name} has no task"
+        for name in sorted(requirements - cited, key=lambda name: int(name[1:]))
     ]
 
 
@@ -1013,7 +941,7 @@ def _strict_task(
     root: Path,
     task: StrictTask,
     providers: dict[str, set[str]],
-    decisions: set[str],
+    facts: SpecFacts,
     targets: set[str],
 ) -> tuple[dict[str, set[str]], list[str]]:
     """Validate one task and return updated producer registries."""
@@ -1023,7 +951,14 @@ def _strict_task(
         f"task {task.number}: {error}" for error in file_errors + provision_errors
     ]
     findings.extend(_task_provision_errors(task, refs, provisions))
-    findings.extend(_task_decision_errors(task, decisions))
+    findings.extend(
+        _task_citation_errors(task, task.decisions, "decision", facts.decisions)
+    )
+    findings.extend(
+        _task_citation_errors(
+            task, task.requirements, "requirement", facts.requirements
+        )
+    )
     findings.extend(_task_file_errors(root, task, refs, providers))
     updated, producer_errors = _update_providers(task, refs, provisions, providers)
     findings.extend(_strict_verify(root, task, updated, targets))
@@ -1057,15 +992,24 @@ def _strict_spec_gate(root: Path, spec_path: str) -> list[str]:
         check=False,
         text=True,
     )
-    return [] if result.returncode == 0 else ["specification fails spec-check-ready"]
+    if result.returncode == 0:
+        return []
+    detail = [
+        line
+        for line in result.stdout.splitlines()
+        if not line.startswith("spec-check:")
+    ]
+    return [f"specification fails spec-check-ready: {line}" for line in detail] or [
+        "specification fails spec-check-ready"
+    ]
 
 
-def _strict_spec_errors(root: Path, parsed: StrictPlan) -> tuple[set[str], list[str]]:
-    """Validate plan specification freshness and return active decisions."""
+def _strict_spec_errors(root: Path, parsed: StrictPlan) -> tuple[SpecFacts, list[str]]:
+    """Validate plan specification freshness and read its citable IDs."""
     spec_path = parsed.metadata["Spec"]
     spec = root / spec_path
     if not spec.is_file():
-        return set(), [f"specification does not exist: {spec_path}"]
+        return SpecFacts(set(), set()), [f"specification does not exist: {spec_path}"]
     spec_bytes = spec.read_bytes()
     findings = _strict_spec_gate(root, spec_path)
     if hashlib.sha256(spec_bytes).hexdigest() != parsed.metadata["Spec SHA-256"]:
@@ -1076,9 +1020,12 @@ def _strict_spec_errors(root: Path, parsed: StrictPlan) -> tuple[set[str], list[
     if not _strict_git_path(root, spec_path):
         findings.append("specification is not tracked")
     try:
-        return _strict_spec_decisions(root, spec_path), findings
-    except (OSError, UnicodeDecodeError, subprocess.CalledProcessError):
-        return set(), [*findings, "specification decisions cannot be read"]
+        return _strict_spec_facts(root, spec_path), findings
+    except (OSError, UnicodeDecodeError):
+        return SpecFacts(set(), set()), [
+            *findings,
+            "specification entries cannot be read",
+        ]
 
 
 def _review_required_errors(lines: list[str]) -> list[str]:
@@ -1154,9 +1101,7 @@ def _strict_review_errors(plan: Path) -> list[str]:
     return findings
 
 
-def _strict_task_errors(
-    root: Path, parsed: StrictPlan, decisions: set[str]
-) -> list[str]:
+def _strict_task_errors(root: Path, parsed: StrictPlan, facts: SpecFacts) -> list[str]:
     """Validate every task in order."""
     providers = {
         key: set() for key in ("path", "test", "test-name", "test-path", "make-target")
@@ -1164,9 +1109,11 @@ def _strict_task_errors(
     targets = _strict_targets(root)
     findings: list[str] = []
     for task in parsed.tasks:
-        providers, found = _strict_task(root, task, providers, decisions, targets)
+        providers, found = _strict_task(root, task, providers, facts, targets)
         findings.extend(found)
-    if parsed.phases and parsed.phases[-1] != parsed.tasks[-1].number[0]:
+    findings.extend(_coverage_errors(parsed.tasks, facts.requirements))
+    last_with_task = parsed.tasks[-1].number[0] if parsed.tasks else 0
+    if parsed.phases and parsed.phases[-1] != last_with_task:
         findings.append("last phase has no task")
     return findings
 
@@ -1178,12 +1125,108 @@ def strict_audit(plan: Path, root: Path) -> list[str]:
         return findings
     parsed, errors = _strict_plan(text)
     findings.extend(errors)
+    findings.extend(_sentence_errors(text))
     if parsed is None:
         return findings
-    decisions, spec_errors = _strict_spec_errors(root, parsed)
+    facts, spec_errors = _strict_spec_errors(root, parsed)
     findings.extend(spec_errors)
     findings.extend(_strict_review_errors(plan))
-    return findings + _strict_task_errors(root, parsed, decisions)
+    return findings + _strict_task_errors(root, parsed, facts)
+
+
+def _spec_path(topic: str) -> str:
+    """The one specification path a topic may use."""
+    return f"docs/specs/{topic}.md"
+
+
+def _marker_valid(directory: Path) -> bool:
+    """Return whether the topic directory carries the v1 workflow marker."""
+    try:
+        return (directory / _V1_MARKER).read_bytes() == b"version=1\n"
+    except OSError:
+        return False
+
+
+def _init_input_errors(root: Path, topic: str) -> list[str]:
+    """Validate the topic, its ready specification, and the repository state."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", topic):
+        return [f"topic is not a safe slug: {topic}"]
+    spec_path = _spec_path(topic)
+    if not (root / spec_path).is_file():
+        return [f"specification does not exist: {spec_path}"]
+    findings = _strict_spec_gate(root, spec_path)
+    if not _strict_clean(root):
+        findings.append("repository is not clean")
+    return findings
+
+
+def _init_metadata(root: Path, topic: str) -> tuple[PlanInit | None, list[str]]:
+    """Read the specification facts that the plan head records."""
+    data = (root / _spec_path(topic)).read_bytes()
+    revision = re.search(
+        r"^Revision: ([1-9][0-9]*)$", data.decode("utf-8"), re.MULTILINE
+    )
+    if revision is None:
+        return None, ["specification revision cannot be read"]
+    digest = hashlib.sha256(data).hexdigest()
+    return PlanInit(topic, _spec_path(topic), revision.group(1), digest), []
+
+
+def _plan_directory_state(directory: Path, init: PlanInit) -> tuple[str, list[str]]:
+    """Classify the topic directory as new, current, or stale."""
+    # `_strict_path` rejects a symlinked plan for the same reason: the marker
+    # and the stamp below would otherwise be written outside the repository.
+    if directory.is_symlink():
+        return "", ["plan directory must not be a symlink"]
+    if not directory.exists():
+        return "new", []
+    if not _marker_valid(directory):
+        return "", ["plan directory holds an older plan format: move it"]
+    plan = directory / "plan.md"
+    if not plan.is_file():
+        return "current", []
+    metadata, _ = _strict_metadata(plan.read_text(encoding="utf-8").splitlines())
+    fresh = (
+        metadata.get("Spec") == init.spec
+        and metadata.get("Spec SHA-256") == init.digest
+    )
+    return "current" if fresh else "stale", []
+
+
+def _init_report(root: Path, init: PlanInit, state: str) -> list[str]:
+    """The directory state, then the five metadata lines of the plan head."""
+    return [
+        f"Plan directory: {PLAN_DIR}{init.topic}/ ({state})",
+        f"Spec: {init.spec}",
+        f"Spec revision: {init.revision}",
+        f"Spec SHA-256: {init.digest}",
+        f"Repository commit: {_git_text(root, ['rev-parse', 'HEAD'])}",
+        f"Date: {date.today().isoformat()}",
+    ]
+
+
+def plan_init(root: Path, topic: str) -> tuple[list[str], list[str]]:
+    """Gate the plan inputs, write the marker, and report the plan metadata.
+
+    A stale directory is a state, not a finding. The plan it holds was written
+    for another specification, and only the user decides to replace it.
+    """
+    findings = _init_input_errors(root, topic)
+    if findings:
+        return findings, []
+    init, findings = _init_metadata(root, topic)
+    if init is None:
+        return findings, []
+    directory = root / PLAN_DIR / topic
+    state, findings = _plan_directory_state(directory, init)
+    if findings:
+        return findings, []
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / _V1_MARKER).write_bytes(b"version=1\n")
+    # The stamp opens this directory to `scripts/hooks/post-bash.sh`, which
+    # gates a plan written through the shell. Both hooks renew it.
+    (directory / _CHECK_STAMP).touch()
+    return [], _init_report(root, init, state)
 
 
 def _strict_main(plan: Path) -> int:
@@ -1200,25 +1243,29 @@ def _strict_main(plan: Path) -> int:
     return 2
 
 
+def _init_main(topic: str) -> int:
+    """Run the plan input gate and print the plan metadata."""
+    try:
+        findings, report = plan_init(_repo_root(), topic)
+    except (OSError, UnicodeDecodeError, subprocess.CalledProcessError) as exc:
+        print(f"plan-init: gate error: {exc}", file=sys.stderr)
+        return 1
+    if findings:
+        print("\n".join(findings))
+        print(f"plan-init: {len(findings)} finding(s)")
+        return 2
+    print("\n".join(report))
+    return 0
+
+
 def main(argv: list[str]) -> int:
-    """Audit one plan. See the module docstring for the exit codes."""
+    """Run one plan gate mode. See the module docstring for the exit codes."""
     if len(argv) == 2 and argv[0] == "--check":
         return _strict_main(Path(argv[1]))
-    if len(argv) != 1:
-        print("usage: plan-guard.py [--check] <plan.md>", file=sys.stderr)
-        return 1
-    plan = Path(argv[0])
-    if PLAN_DIR not in plan.resolve().as_posix():
-        return 0
-    try:
-        findings = audit(plan, _repo_root())
-    except (OSError, UnicodeDecodeError):
-        return 0
-    if not findings:
-        return 0
-    print("\n".join(findings))
-    print(f"plan-check: {len(findings)} reference(s) do not resolve")
-    return 2
+    if len(argv) == 2 and argv[0] == "--init":
+        return _init_main(argv[1])
+    print("usage: plan-guard.py --check <plan.md> | --init <topic>", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

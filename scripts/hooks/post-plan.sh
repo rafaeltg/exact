@@ -3,7 +3,8 @@
 # for a canonical write under `.claude/artifacts/plan/<topic>/plan.md`.
 #
 # The explicit `make plan-check` command is authoritative. This adapter only
-# forwards findings after a write and fails open when the adapter or guard is broken.
+# forwards findings after a write and fails open when the adapter or guard is
+# broken. It drops the two findings every incremental plan write produces.
 #
 # Two details the obvious one-liner gets wrong, both copied from post-bash.sh:
 #   - `plan-check` prints findings on stdout. A hook that exits 2 hands the
@@ -54,11 +55,33 @@ esac
 
 [ -e "$f" ] || exit 0
 
-report="$(make -C "$proj" plan-check FILE="$f" 2>&1)" && exit 0
+report="$(make -C "$proj" plan-check FILE="$f" 2>&1)"
+
+# The gate has seen these bytes. `post-bash.sh` reads this stamp, so a plan
+# written through the shell is checked once and a Write is not checked twice.
+# Only a directory `make plan-init` opened is stamped: stamping an older plan
+# would open it to that probe, and its findings are not this workflow's to fix.
+[ -f "${f%/plan.md}/.spec-plan-v1" ] &&
+  { : >"${f%/plan.md}/.plan-checked" 2>/dev/null || true; }
 
 # Findings, or a broken guard? Only the guard's closing line proves the former.
-printf '%s' "$report" |
-  grep -qE '^plan-check: [0-9]+ finding' || exit 0
+total="$(printf '%s\n' "$report" |
+  sed -nE 's/^plan-check: ([0-9]+) finding.*/\1/p')"
+[ -z "$total" ] && exit 0
 
-printf '%s\n' "$report" >&2
+# `/plan` writes the head, then one Edit per phase, so a phase that holds no
+# task, and a requirement no task cites yet, are the expected state between two
+# writes. Reporting them trains the agent to read this hook's output as noise,
+# and "repair it" reads as "cite that requirement somewhere", which corrupts
+# the coverage data. The explicit `make plan-check` still reports all three,
+# and that run is the one that gates the review.
+INCOMPLETE='^(phase [1-9][0-9]* has no task|last phase has no task'
+INCOMPLETE="$INCOMPLETE"'|active requirement R[1-9][0-9]* has no task)$'
+expected="$(printf '%s\n' "$report" |
+  grep -cE "$INCOMPLETE")"
+[ "$total" -gt "$expected" ] || exit 0
+
+printf '%s\n' "$report" |
+  grep -vE "$INCOMPLETE" |
+  sed -E "s/^plan-check: [0-9]+ finding/plan-check: $((total - expected)) finding/" >&2
 exit 2
