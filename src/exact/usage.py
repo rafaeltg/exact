@@ -12,7 +12,8 @@ cache_creation at 1.25x (5m write), output at base output.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Literal
 
 from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel
@@ -225,8 +226,12 @@ EXA_SEARCH_KINDS = frozenset(
 )
 _METERED_TOOL_KINDS = EXA_SEARCH_KINDS | {"exa_highlights", "elicit_search"}
 
+# The group key an ``llm`` event falls under when its ``model`` or ``node``
+# field is missing or empty.
+_UNKNOWN_KEY = "(unknown)"
 
-def _empty_totals() -> dict:
+
+def _empty_llm_totals() -> dict:
     return {
         "llm_calls": 0,
         "input_tokens": 0,
@@ -235,6 +240,12 @@ def _empty_totals() -> dict:
         "cache_creation": 0,
         "llm_cost": 0.0,
         "llm_unpriced_calls": 0,
+    }
+
+
+def _empty_totals() -> dict:
+    return {
+        **_empty_llm_totals(),
         "exa_search": 0,
         "exa_highlights": 0,
         "elicit_search": 0,
@@ -292,6 +303,86 @@ def aggregate(events: list[dict[str, Any]]) -> dict[str, Any]:
     return totals
 
 
+def _group_order(item: tuple[str, dict]) -> tuple[float, int, str]:
+    """Sort key for one group line: priced USD desc, tokens desc, key asc."""
+    key, totals = item
+    tokens = totals["input_tokens"] + totals["output_tokens"]
+    # Float sums depend on event order. Rounding removes that noise, so equal
+    # USD falls through to tokens and key. Rate-table USD steps are far larger.
+    return (-round(totals["llm_cost"], 10), -tokens, key)
+
+
+def llm_groups(
+    events: list[dict[str, Any]], field: Literal["model", "node"]
+) -> list[tuple[str, dict[str, Any]]]:
+    """Fold ``llm`` events into per-``field`` totals, sorted by ``_group_order``.
+
+    An event with a missing or empty ``field`` value groups under
+    ``_UNKNOWN_KEY``. Non-``llm`` events are skipped.
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    for ev in events or []:
+        if ev.get("kind") != "llm":
+            continue
+        key = str(ev.get(field) or _UNKNOWN_KEY)
+        totals = groups.setdefault(key, _empty_llm_totals())
+        _fold_llm(totals, ev, int(ev.get("calls") or 1))
+    return sorted(groups.items(), key=_group_order)
+
+
+def _llm_fields(t: dict) -> str:
+    """The calls/tokens fields shared by the total row and every group row."""
+    return f"{t['llm_calls']} calls  {t['input_tokens']} in  {t['output_tokens']} out"
+
+
+def _cache_lines(t: dict) -> list[str]:
+    """The cache sub-line of one row; empty when the row has no cache tokens."""
+    if not (t["cache_read"] or t["cache_creation"]):
+        return []
+    return [f"        cache  {t['cache_read']} read  {t['cache_creation']} write"]
+
+
+def _priced_usd(t: dict) -> str:
+    """The USD field of a row, with its unpriced-call count when non-zero."""
+    n = t["llm_unpriced_calls"]
+    mark = f" + {n} unpriced" if n else ""
+    return f"${t['llm_cost']:.4f}{mark}"
+
+
+def _model_line(key: str, t: dict) -> str:
+    """One ``by model`` row; a model the rate table cannot price reads unpriced."""
+    usd = "unpriced" if t["llm_unpriced_calls"] else f"${t['llm_cost']:.4f}"
+    return f"    {key}  {_llm_fields(t)}   {usd}"
+
+
+def _node_line(key: str, t: dict) -> str:
+    """One ``by node`` row; a node mixing priced and unpriced models sums both."""
+    return f"    {key}  {_llm_fields(t)}   {_priced_usd(t)}"
+
+
+def _group_lines(
+    label: str,
+    groups: list[tuple[str, dict]],
+    line: Callable[[str, dict], str],
+) -> list[str]:
+    """One labelled group block: its header, then each row and cache sub-line."""
+    lines = [f"  {label}"]
+    for key, t in groups:
+        lines.append(line(key, t))
+        lines += _cache_lines(t)
+    return lines
+
+
+def _breakdown_lines(events: list[dict[str, Any]]) -> list[str]:
+    """The ``by model`` and ``by node`` group blocks; empty with no llm events."""
+    models = llm_groups(events, "model")
+    if not models:
+        return []
+    lines = _group_lines("by model", models, _model_line)
+    lines += _group_lines("by node", llm_groups(events, "node"), _node_line)
+    return lines
+
+
 def format_usage(
     events: list[dict[str, Any]], *, effort: str | None = None
 ) -> list[str]:
@@ -300,16 +391,9 @@ def format_usage(
         return []
     a = aggregate(events)
     lines = ["## Usage" if effort is None else f"## Usage (effort={effort})"]
-    unpriced = a["llm_unpriced_calls"]
-    mark = f" + {unpriced} unpriced" if unpriced else ""
-    lines.append(
-        f"llm     {a['llm_calls']} calls  {a['input_tokens']} in  "
-        f"{a['output_tokens']} out   ${a['llm_cost']:.4f}{mark}"
-    )
-    if a["cache_read"] or a["cache_creation"]:
-        lines.append(
-            f"        cache  {a['cache_read']} read  {a['cache_creation']} write"
-        )
+    lines.append(f"llm     {_llm_fields(a)}   {_priced_usd(a)}")
+    lines += _cache_lines(a)
+    lines += _breakdown_lines(events)
     lines.append(
         f"exa     {a['exa_search']} search  {a['exa_highlights']} highlights"
         f"        ${a['exa_cost']:.4f}"

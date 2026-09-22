@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from exact.audit import audit_report
 from exact.cli import main
-from exact.models import ResearchBrief
+from exact.models import ClarifyDecision, ResearchBrief
 from exact.nodes.clarify import decide_clarify
 from exact.nodes.research import research_agent
 from exact.nodes.scout import scout
@@ -21,6 +21,7 @@ from exact.usage import (
     format_usage,
     invoke_structured,
     invoke_text,
+    llm_groups,
 )
 from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, seed_prefs
 
@@ -487,3 +488,333 @@ def test_the_usage_heading_stays_bare_without_an_effort():
 
 def test_no_events_stay_empty_even_with_an_effort():
     assert format_usage([], effort="max") == []
+
+
+def _priced_llm_event(**overrides) -> dict:
+    event = {
+        "kind": "llm",
+        "node": "write_report",
+        "role": "write",
+        "model": "anthropic:claude-haiku-4-5",
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "calls": 1,
+    }
+    event.update(overrides)
+    return event
+
+
+def test_llm_groups_sum_to_the_llm_total():
+    events = [
+        _priced_llm_event(
+            node="write_report",
+            model="anthropic:claude-haiku-4-5",
+            input_tokens=1000,
+            output_tokens=500,
+            cache_read=100,
+            cache_creation=50,
+        ),
+        _priced_llm_event(
+            node="research_agent",
+            role="research",
+            model="anthropic:claude-opus-4-8",
+            input_tokens=200,
+            output_tokens=100,
+            calls=2,
+        ),
+        {"kind": "llm", "input_tokens": 30, "output_tokens": 7},
+        {"kind": "exa_search", "node": "scout", "calls": 1},
+    ]
+    total = aggregate(events)
+    for field in ("model", "node"):
+        groups = llm_groups(events, field)
+        assert sum(t["llm_calls"] for _, t in groups) == total["llm_calls"]
+        for tok in ("input_tokens", "output_tokens", "cache_read", "cache_creation"):
+            assert sum(t[tok] for _, t in groups) == total[tok]
+        assert sum(t["llm_cost"] for _, t in groups) == pytest.approx(total["llm_cost"])
+
+
+def test_llm_groups_merge_roles_of_one_model_and_one_node():
+    events = [
+        _priced_llm_event(node="research_agent", role="research"),
+        _priced_llm_event(
+            node="research_agent",
+            role="compress",
+            input_tokens=200,
+            output_tokens=20,
+        ),
+    ]
+    model_groups = llm_groups(events, "model")
+    assert [key for key, _ in model_groups] == ["anthropic:claude-haiku-4-5"]
+    assert model_groups[0][1]["llm_calls"] == 2
+
+    node_groups = llm_groups(events, "node")
+    assert [key for key, _ in node_groups] == ["research_agent"]
+    assert node_groups[0][1]["llm_calls"] == 2
+
+
+def test_llm_groups_sort_by_usd_then_tokens_then_key():
+    events = [
+        _priced_llm_event(
+            node="n1",
+            model="anthropic:claude-sonnet-4-6",
+            input_tokens=10_000,
+            output_tokens=0,
+        ),
+        _priced_llm_event(
+            node="n2",
+            model="anthropic:claude-haiku-4-5",
+            input_tokens=5_000,
+            output_tokens=0,
+        ),
+        _priced_llm_event(
+            node="n3", model="aaa-unpriced", input_tokens=0, output_tokens=0
+        ),
+        _priced_llm_event(
+            node="n4", model="zzz-haiku-4-5", input_tokens=0, output_tokens=0
+        ),
+        _priced_llm_event(
+            node="n5", model="mmm-unpriced", input_tokens=100, output_tokens=0
+        ),
+    ]
+    expected = [
+        "anthropic:claude-sonnet-4-6",
+        "anthropic:claude-haiku-4-5",
+        "mmm-unpriced",
+        "aaa-unpriced",
+        "zzz-haiku-4-5",
+    ]
+    assert [key for key, _ in llm_groups(events, "model")] == expected
+    assert [key for key, _ in llm_groups(list(reversed(events)), "model")] == expected
+
+
+def test_llm_groups_break_an_equal_summed_usd_by_key():
+    # 0.1 + 0.2 + 0.3 and 0.6 differ as floats; the order must not see that.
+    events = [
+        _priced_llm_event(node="y", input_tokens=100_000, output_tokens=0),
+        _priced_llm_event(node="y", input_tokens=200_000, output_tokens=0),
+        _priced_llm_event(node="y", input_tokens=300_000, output_tokens=0),
+        _priced_llm_event(node="x", input_tokens=600_000, output_tokens=0),
+    ]
+    assert [key for key, _ in llm_groups(events, "node")] == ["x", "y"]
+    assert [key for key, _ in llm_groups(list(reversed(events)), "node")] == [
+        "x",
+        "y",
+    ]
+
+
+def test_llm_groups_file_a_missing_key_under_unknown():
+    no_model = _priced_llm_event(node="n1", input_tokens=10, calls=0)
+    del no_model["model"]
+    no_node = _priced_llm_event(input_tokens=1, output_tokens=1)
+    del no_node["node"]
+    empty_node = _priced_llm_event(node="", input_tokens=1, output_tokens=1)
+    events = [no_model, no_node, empty_node]
+
+    model_groups = dict(llm_groups(events, "model"))
+    assert model_groups["(unknown)"]["llm_calls"] == 1
+    assert model_groups["(unknown)"]["llm_unpriced_calls"] == 1
+
+    node_groups = dict(llm_groups(events, "node"))
+    assert node_groups["(unknown)"]["llm_calls"] == 2
+
+
+def test_by_model_group_marks_an_unknown_model_unpriced():
+    no_model = _priced_llm_event(input_tokens=10, output_tokens=5)
+    del no_model["model"]
+    assert "    (unknown)  1 calls  10 in  5 out   unpriced" in format_usage([no_model])
+
+
+def test_llm_groups_skip_a_failed_structured_call():
+    out = decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "prefs": seed_prefs(),
+            "clarify_turns": 0,
+            "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
+        },
+        runtime(llm=_ThinkingProseModel()),
+    )
+    assert llm_groups(out.get("usage") or [], "node") == []
+
+
+def test_by_model_group_prints_one_line_per_model():
+    events = [
+        _priced_llm_event(
+            node="write_report",
+            model="anthropic:claude-sonnet-4-6",
+            input_tokens=1000,
+            output_tokens=200,
+        ),
+        _priced_llm_event(
+            node="decide_clarify",
+            role="router",
+            model="anthropic:claude-haiku-4-5",
+            input_tokens=500,
+            output_tokens=100,
+        ),
+        _priced_llm_event(
+            node="research_agent",
+            role="research",
+            model="anthropic:claude-opus-4-8",
+            input_tokens=300,
+            output_tokens=50,
+        ),
+    ]
+    lines = format_usage(events)
+    assert (
+        "    anthropic:claude-sonnet-4-6  1 calls  1000 in  200 out   $0.0060" in lines
+    )
+    assert "    anthropic:claude-haiku-4-5  1 calls  500 in  100 out   $0.0010" in lines
+    opus_line = next(line for line in lines if "claude-opus-4-8" in line)
+    assert opus_line == (
+        "    anthropic:claude-opus-4-8  1 calls  300 in  50 out   unpriced"
+    )
+
+
+def test_by_model_group_follows_the_llm_total_and_its_cache_line():
+    cached = [
+        _priced_llm_event(
+            input_tokens=1100, output_tokens=0, cache_read=1000, cache_creation=100
+        )
+    ]
+    lines = format_usage(cached)
+    assert lines[3] == "  by model"
+    assert lines[4].startswith("    anthropic:claude-haiku-4-5")
+    assert lines[5].startswith("        cache")
+
+    uncached = [_priced_llm_event(input_tokens=100, output_tokens=0)]
+    lines_uncached = format_usage(uncached)
+    assert not lines_uncached[4].startswith("        cache")
+
+
+def test_by_model_group_ignores_event_order():
+    events = [
+        _priced_llm_event(
+            node="n1",
+            model="anthropic:claude-sonnet-4-6",
+            input_tokens=1000,
+            output_tokens=100,
+        ),
+        _priced_llm_event(
+            node="n2",
+            model="anthropic:claude-haiku-4-5",
+            input_tokens=500,
+            output_tokens=50,
+        ),
+        _priced_llm_event(
+            node="n3",
+            model="anthropic:claude-opus-4-8",
+            input_tokens=300,
+            output_tokens=30,
+        ),
+    ]
+    assert format_usage(events) == format_usage(list(reversed(events)))
+
+
+def test_footer_groups_print_node_usd_and_unpriced_count():
+    events = [
+        _priced_llm_event(
+            node="research_agent",
+            role="research",
+            model="anthropic:claude-haiku-4-5",
+            input_tokens=1000,
+            output_tokens=0,
+        ),
+        _priced_llm_event(
+            node="research_agent",
+            role="compress",
+            model="anthropic:claude-opus-4-8",
+            input_tokens=100,
+            output_tokens=0,
+        ),
+    ]
+    lines = format_usage(events)
+    node_line = next(line for line in lines if line.startswith("    research_agent"))
+    assert node_line == (
+        "    research_agent  2 calls  1100 in  0 out   $0.0010 + 1 unpriced"
+    )
+
+
+def test_footer_groups_lay_out_between_the_llm_total_and_exa():
+    events = [
+        _priced_llm_event(
+            input_tokens=1100, output_tokens=0, cache_read=1000, cache_creation=100
+        ),
+        _priced_llm_event(
+            node="research_agent",
+            role="research",
+            model="anthropic:claude-sonnet-4-6",
+            input_tokens=1000,
+            output_tokens=200,
+        ),
+        {"kind": "exa_search", "node": "scout", "calls": 1},
+    ]
+    assert format_usage(events) == [
+        "## Usage",
+        "llm     2 calls  2100 in  200 out   $0.0062",
+        "        cache  1000 read  100 write",
+        "  by model",
+        "    anthropic:claude-sonnet-4-6  1 calls  1000 in  200 out   $0.0060",
+        "    anthropic:claude-haiku-4-5  1 calls  1100 in  0 out   $0.0002",
+        "        cache  1000 read  100 write",
+        "  by node",
+        "    research_agent  1 calls  1000 in  200 out   $0.0060",
+        "    write_report  1 calls  1100 in  0 out   $0.0002",
+        "        cache  1000 read  100 write",
+        "exa     1 search  0 highlights        $0.0070",
+        "elicit  0 search                      (subscription)",
+        "total                                 $0.0132",
+    ]
+
+
+def test_footer_groups_are_absent_from_a_tool_only_footer():
+    events = [
+        {"kind": "exa_search", "node": "scout", "calls": 1},
+        {"kind": "elicit_search", "node": "scout", "calls": 1},
+    ]
+    assert format_usage(events) == [
+        "## Usage",
+        "llm     0 calls  0 in  0 out   $0.0000",
+        "exa     1 search  0 highlights        $0.0070",
+        "elicit  1 search                      (subscription)",
+        "total                                 $0.0070",
+    ]
+
+
+def test_footer_groups_print_at_the_clarify_pause(capsys):
+    llm = FakeLLM(
+        clarify=ClarifyDecision(needed=True, question="Scout found Source A. Focus?")
+    )
+    code = main(
+        ["What is X?"],
+        runtime=runtime(llm=llm),
+        checkpointer=InMemorySaver(),
+    )
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "  by model" in lines
+    assert "  by node" in lines
+    assert any(line.startswith("    decide_clarify  ") for line in lines)
+
+
+def test_footer_groups_list_both_models_after_a_resume(capsys):
+    llm = FakeLLM(
+        clarify=ClarifyDecision(needed=True, question="Scout found Source A. Focus?")
+    )
+    saver = InMemorySaver()
+    main(
+        ["What is X?", "--thread-id", "t-usage-resume"],
+        runtime=runtime(llm=llm, exact_model="anthropic:claude-haiku-4-5"),
+        checkpointer=saver,
+    )
+    capsys.readouterr()
+    main(
+        ["What is X?", "--thread-id", "t-usage-resume"],
+        runtime=runtime(llm=llm, exact_model="anthropic:claude-sonnet-4-6"),
+        checkpointer=saver,
+        read_reply=lambda: "skip",
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.startswith("    anthropic:claude-haiku-4-5  ") for line in lines)
+    assert any(line.startswith("    anthropic:claude-sonnet-4-6  ") for line in lines)
