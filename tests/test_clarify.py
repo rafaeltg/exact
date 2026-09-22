@@ -10,7 +10,7 @@ from exact.models import ClarificationOption, ClarifyDecision, ResearchBrief
 from exact.nodes.brief import generate_brief
 from exact.nodes.clarify import decide_clarify, parse_resume
 from exact.nodes.write import format_references
-from tests.fakes import FakeLLM, runtime
+from tests.fakes import FakeLLM, runtime, seed_prefs
 
 
 @pytest.mark.parametrize(
@@ -100,7 +100,7 @@ def test_skip_clarify_forces_needed_false():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": True,
+            "prefs": seed_prefs(clarify_mode="skip"),
             "clarify_turns": 0,
             "scout_hits": [],
         },
@@ -113,7 +113,7 @@ def test_needed_false_skips_clarify():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -138,7 +138,7 @@ def test_decide_clarify_stops_at_three_turns(turns: int, cap: int):
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": turns,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -158,7 +158,7 @@ def test_decide_clarify_still_asks_after_two_turns():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 2,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -181,7 +181,7 @@ def test_decide_clarify_prompt_carries_the_user_answer():
     decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 1,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
             "messages": [
@@ -199,7 +199,7 @@ def test_decide_clarify_prompt_marks_an_empty_clarify_thread():
     decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -220,7 +220,7 @@ def test_needed_true_question_without_scout_title_does_not_interrupt():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -240,7 +240,7 @@ def test_needed_true_question_that_cites_a_scout_title_interrupts():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -261,7 +261,7 @@ def test_empty_scout_allows_a_generic_question():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [],
         },
@@ -282,7 +282,7 @@ def test_empty_scout_is_shown_to_decide_clarify():
     decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [],
         },
@@ -297,7 +297,7 @@ def test_decide_clarify_includes_a_user_message():
     decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -318,7 +318,7 @@ def test_needed_clarify_without_options_gets_a_default():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -560,7 +560,7 @@ def test_scout_block_labels_publication_hit():
     decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [_PAPER_HIT],
         },
@@ -581,3 +581,152 @@ def test_scout_labels_fall_back_to_web_for_a_pre_focus_checkpoint():
     )
     prompt = llm.with_structured_output(ResearchBrief).last_messages[0].content
     assert "[web]" in prompt
+
+
+# ─── Brief preferences ──────────────────────────────────────────────────
+
+
+def _brief_under(prefs: dict, llm: FakeLLM | None = None, query="What is X?") -> dict:
+    out = generate_brief(
+        {"initial_query": query, "scout_hits": [], "messages": [], "prefs": prefs},
+        runtime(llm=llm or FakeLLM()),
+    )
+    return out["brief"]
+
+
+@pytest.mark.parametrize("fail_structured", [False, True])
+def test_brief_sources_web_forces_web_intent_on_both_paths(fail_structured: bool):
+    llm = FakeLLM(
+        brief=ResearchBrief(question="q", intent="academic", must_cover=["a"]),
+        fail_structured=fail_structured,
+    )
+    brief = _brief_under(
+        seed_prefs(source_mix="web"), llm, query="Clinical trials of X?"
+    )
+    assert brief["intent"] == "web"
+
+
+def test_brief_sources_auto_keeps_the_academic_signal_rule():
+    llm = FakeLLM(brief=ResearchBrief(question="q", intent="web", must_cover=["a"]))
+    assert _brief_under(seed_prefs(), llm, "Clinical trials of X?")["intent"] == (
+        "academic"
+    )
+    assert _brief_under(seed_prefs(), llm, "What is X?")["intent"] == "web"
+
+
+def test_brief_tone_executive_replaces_the_model_audience():
+    llm = FakeLLM(
+        brief=ResearchBrief(question="q", audience="clinicians", must_cover=["a"])
+    )
+    assert _brief_under(seed_prefs(tone="executive"), llm)["audience"] == "executives"
+    assert _brief_under(seed_prefs(), llm)["audience"] == "clinicians"
+
+
+def test_brief_exclude_and_denylist_append_two_host_notes_after_model_entries():
+    llm = FakeLLM(
+        brief=ResearchBrief(question="q", must_cover=["a"], exclusions=["model note"])
+    )
+    brief = _brief_under(seed_prefs(exclude_domains=["a.com"], denylist="seo"), llm)
+    first, exclude, preset = brief["exclusions"]
+    assert first == "model note"
+    assert "a.com" in exclude
+    for host in (
+        "quora.com",
+        "wikihow.com",
+        "ehow.com",
+        "answers.com",
+        "reference.com",
+        "medium.com",
+        "hubpages.com",
+        "ezinearticles.com",
+    ):
+        assert host in preset
+
+
+def test_brief_include_domains_append_one_restriction_note():
+    brief = _brief_under(seed_prefs(include_domains=["b.com", "a.com"]))
+    (note,) = brief["exclusions"]
+    assert "b.com, a.com" in note
+
+
+def test_brief_note_equal_to_a_model_entry_appears_once():
+    prefs = seed_prefs(include_domains=["a.com"])
+    (note,) = _brief_under(prefs)["exclusions"]
+    llm = FakeLLM(
+        brief=ResearchBrief(question="q", must_cover=["a"], exclusions=[note])
+    )
+    assert _brief_under(prefs, llm)["exclusions"] == [note]
+
+
+# ─── Clarify preferences ────────────────────────────────────────────────
+
+_HITS = [{"title": "Source A", "provider": "exa", "snippet": "X"}]
+
+
+def _clarify_prompt(prefs: dict, hits=None) -> str:
+    llm = FakeLLM()
+    decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "prefs": prefs,
+            "clarify_turns": 0,
+            "scout_hits": _HITS if hits is None else hits,
+        },
+        runtime(llm=llm),
+    )
+    return llm.with_structured_output(ClarifyDecision).last_messages[0].content
+
+
+def test_clarify_prefs_prefer_replaces_the_skip_sentence():
+    prompt = _clarify_prompt(seed_prefs(clarify_mode="prefer"))
+    assert "Prefer skipping if the query is specific enough." not in prompt
+    assert "Prefer asking one grounded question" in prompt
+    assert "the question MUST mention at least one scout title" in prompt
+
+
+def test_clarify_prefs_ungrounded_question_still_skips_under_prefer():
+    llm = FakeLLM(
+        clarify=ClarifyDecision(
+            needed=True,
+            question="Which angle matters most?",
+            options=[ClarificationOption(id="opt_1", label="A")],
+        )
+    )
+    out = decide_clarify(
+        {
+            "initial_query": "What is X?",
+            "prefs": seed_prefs(clarify_mode="prefer"),
+            "clarify_turns": 0,
+            "scout_hits": _HITS,
+        },
+        runtime(llm=llm),
+    )
+    assert out["clarify_needed"] is False
+
+
+def test_clarify_prefs_settled_axes_are_named_and_entity_stays_open():
+    prompt = _clarify_prompt(
+        seed_prefs(source_mix="academic", recency="month", tone="plain")
+    )
+    for axis in ("web versus academic sources", "the time range", "the audience"):
+        assert f"settles {axis}; do not ask about it." in prompt
+    assert "which entity" in prompt
+    assert "settles which entity" not in prompt
+
+
+def test_clarify_prefs_lang_es_asks_in_spanish_and_quotes_titles_unchanged():
+    prompt = _clarify_prompt(seed_prefs(language="es"))
+    assert "Write the question and the options in Spanish." in prompt
+    assert "Quote scout titles unchanged" in prompt
+
+
+def test_clarify_prefs_defaults_leave_the_prompt_unchanged():
+    prompt = _clarify_prompt(seed_prefs(), hits=[])
+    assert (
+        "You already have a SCOUT of web/paper hits. "
+        "Prefer skipping if the query is specific enough.\n"
+    ) in prompt
+    assert (
+        "skip unless a new ambiguity remains that the answer did not settle.\n"
+        "\nQuery: What is X?\n"
+    ) in prompt

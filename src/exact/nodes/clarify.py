@@ -16,6 +16,7 @@ from exact.models import (
     UserClarification,
     focus_label,
 )
+from exact.prefs import state_prefs
 from exact.usage import StructuredOutputError, invoke_structured
 
 type DecideRoute = Literal["ask_user", "generate_brief"]
@@ -105,10 +106,11 @@ def _ask_decision(
         ClarifyDecision,
         [
             SystemMessage(
-                content=prompts.DECIDE_CLARIFY.format(
-                    query=state["initial_query"],
-                    scout=_scout_block(hits),
-                    chat=prompts.chat_block(state.get("messages")),
+                content=prompts.clarify_prompt(
+                    state["initial_query"],
+                    _scout_block(hits),
+                    prompts.chat_block(state.get("messages")),
+                    state_prefs(state),
                 )
             ),
             HumanMessage(content="Decide whether to clarify."),
@@ -121,7 +123,7 @@ def _ask_decision(
 
 def decide_clarify(state: ExactState, runtime: Runtime) -> ExactState:
     """Decide whether to interrupt; skip when scout titles are not cited."""
-    if state.get("skip_clarify"):
+    if state_prefs(state)["clarify_mode"] == "skip":
         return {"clarify_needed": False}
     turns = int(state.get("clarify_turns") or 0)
     cap = _clarify_cap(state, runtime.settings.max_clarify_turns)

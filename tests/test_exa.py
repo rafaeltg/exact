@@ -477,3 +477,64 @@ def test_publication_author_list_caps_at_three_names(count: int, has_et_al: bool
     snippet = _client(sdk).search("q", num=5, category="publication")[0].snippet
     assert ("et al." in snippet) is has_et_al
     assert "Author 0" in snippet
+
+
+_FILTERS = {
+    "exclude_domains": ["quora.com"],
+    "start_published_date": "2026-09-14",
+}
+
+
+def test_filters_web_search_passes_snake_case_arguments():
+    sdk = FakeExaSdk(results=[_Item(title="A", url="https://example.com/a")])
+    _client(sdk).search("What is X?", num=5, filters=_FILTERS)
+    kwargs = sdk.search_kwargs[0]
+    assert kwargs["exclude_domains"] == ["quora.com"]
+    assert kwargs["start_published_date"] == "2026-09-14"
+    assert kwargs["num_results"] == 5
+
+
+def test_filters_raw_publication_body_holds_camel_case_keys():
+    sdk = FakeExaSdk()
+    _client(sdk).search(
+        "GLP-1 trials",
+        num=5,
+        category="publication",
+        filters={"include_domains": ["nih.gov"], **_FILTERS},
+    )
+    body = sdk.requests[0][1]
+    assert body["includeDomains"] == ["nih.gov"]
+    assert body["excludeDomains"] == ["quora.com"]
+    assert body["startPublishedDate"] == "2026-09-14"
+    assert not [k for k in body if "_" in k]
+
+
+def test_filters_degraded_publication_path_passes_snake_case_arguments():
+    sdk = _NoRequestSdk()
+    _client(sdk).search("GLP-1 trials", num=5, category="publication", filters=_FILTERS)
+    kwargs = sdk.search_kwargs[0]
+    assert kwargs["exclude_domains"] == ["quora.com"]
+    assert kwargs["start_published_date"] == "2026-09-14"
+    assert kwargs["category"] == "publication"
+
+
+_FILTER_KEYS = {
+    "include_domains",
+    "exclude_domains",
+    "start_published_date",
+    "includeDomains",
+    "excludeDomains",
+    "startPublishedDate",
+}
+
+
+def test_filters_an_unfiltered_search_sends_no_filter_key():
+    web = FakeExaSdk(results=[_Item(title="A", url="https://example.com/a")])
+    _client(web).search("What is X?", num=5, filters={})
+    raw = FakeExaSdk()
+    _client(raw).search("GLP-1 trials", num=5, category="publication")
+    degraded = _NoRequestSdk()
+    _client(degraded).search("GLP-1 trials", num=5, category="publication")
+    assert not _FILTER_KEYS & set(web.search_kwargs[0])
+    assert not _FILTER_KEYS & set(raw.requests[0][1])
+    assert not _FILTER_KEYS & set(degraded.search_kwargs[0])

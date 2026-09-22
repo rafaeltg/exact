@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from exact import prompts
+from exact.graph import build_graph
 from exact.models import Finding, PlanDecision, ReflectDecision
 from exact.nodes import research as research_module
 from exact.nodes.plan import plan_topics, route_research
@@ -17,7 +18,15 @@ from exact.nodes.research import (
     research_agent,
 )
 from exact.nodes.scout import _interleave, scout
-from tests.fakes import FakeExa, FakeLLM, RecordingTracer, runtime, source
+from tests.fakes import (
+    FakeExa,
+    FakeLLM,
+    RecordingTracer,
+    graph_seed,
+    runtime,
+    seed_prefs,
+    source,
+)
 
 
 def _payload(**overrides) -> dict:
@@ -260,10 +269,10 @@ def test_scout_interleaves_both_lanes_before_the_slice():
 
 def test_scout_publication_failure_keeps_web_hits_and_appends_one_error():
     class _OnePublicationFailure(FakeExa):
-        def search(self, query, num=5, *, category=None):
+        def search(self, query, num=5, *, category=None, filters=None):
             if category == "publication":
                 raise RuntimeError("boom")
-            return super().search(query, num, category=category)
+            return super().search(query, num, category=category, filters=filters)
 
     out = scout(
         {"initial_query": "What do trials of GLP-1 show?", "clarify_turns": 0},
@@ -856,3 +865,138 @@ def test_a_publication_search_writes_one_ok_line_and_no_refused_line():
     assert [(p["name"], p["outcome"]) for p in tracer.payloads("tool")] == [
         ("exa_publication_search", "ok")
     ]
+
+
+# ─── User preference filters ────────────────────────────────────────────
+
+
+def _run_graph(llm: FakeLLM | None = None, exa: FakeExa | None = None, **kwargs):
+    """Run a whole thread under the given preferences; return its final state."""
+    prefs = seed_prefs(clarify_mode="skip", **kwargs.pop("prefs", {}))
+    rt = runtime(llm=llm or FakeLLM(), exa=exa or FakeExa(), **kwargs.pop("rt", {}))
+    return build_graph(rt).invoke(
+        graph_seed(prefs=prefs, **kwargs), {"configurable": {"thread_id": "t-f"}}
+    )
+
+
+def _gaps(result: dict) -> list[str]:
+    return [gap for f in result["findings"] for gap in f["gaps"]]
+
+
+def test_filters_empty_web_lane_gap_names_its_filters():
+    result = _run_graph(
+        exa=FakeExa(hits=[]),
+        prefs={"exclude_domains": ["a.com"], "recency": "week"},
+    )
+    gap = "lane web: no sources (filters: exclude, recency)"
+    assert gap in _gaps(result)
+    assert gap in result["uncovered"]
+    assert result["final_report"]
+
+
+class _FailingResearchModel:
+    """A research model whose first turn raises, before any tool call."""
+
+    def bind_tools(self, tools, **_kwargs):
+        return self
+
+    def invoke(self, messages, **_kwargs):
+        raise RuntimeError("model down")
+
+
+def test_filters_loop_failure_before_any_attempt_gets_the_suffix():
+    result = _run_graph(
+        prefs={"include_domains": ["a.com"]},
+        rt={"llms": {"research": _FailingResearchModel()}},
+    )
+    assert "lane web: retrieval failed (filters: include)" in _gaps(result)
+
+
+def test_filters_no_new_sources_gets_the_suffix():
+    result = _run_graph(prefs={"exclude_domains": ["a.com"]}, prior_titles=["Source A"])
+    assert "lane web: no new sources (filters: exclude)" in _gaps(result)
+
+
+def test_filters_denylist_social_alone_gives_the_exclude_suffix():
+    result = _run_graph(exa=FakeExa(hits=[]), prefs={"denylist": "social"})
+    assert "lane web: no sources (filters: exclude)" in _gaps(result)
+
+
+def test_filters_people_and_unfiltered_lanes_keep_their_gap_text():
+    people = _run_graph(
+        llm=FakeLLM(
+            plan=PlanDecision(topics=[{"query": "who", "focus": "people"}]),
+            tool_name="exa_people_search",
+        ),
+        exa=FakeExa(hits=[]),
+        prefs={"exclude_domains": ["a.com"]},
+    )
+    web = _run_graph(exa=FakeExa(hits=[]))
+    assert "lane people: no sources" in _gaps(people)
+    assert "lane web: no sources" in _gaps(web)
+
+
+_LANE_TOOLS = {
+    "web": "exa_search",
+    "people": "exa_people_search",
+    "company": "exa_company_search",
+    "publication": "exa_publication_search",
+}
+
+
+def _lane_search(focus: str, exa: FakeExa, prefs: dict, tracer=None) -> None:
+    topic = {"id": "t0_1", "query": "define X", "focus": focus, "status": "pending"}
+    research_agent(
+        _payload(topic=topic, prefs=prefs),
+        runtime(llm=FakeLLM(tool_name=_LANE_TOOLS[focus]), exa=exa, tracer=tracer),
+    )
+
+
+@pytest.mark.parametrize(
+    "focus, expected",
+    [
+        ("web", {"exclude_domains": ["a.com"]}),
+        ("publication", {"exclude_domains": ["a.com"]}),
+        ("people", {}),
+        ("company", {}),
+    ],
+)
+def test_filters_reach_web_and_publication_searches_only(focus: str, expected: dict):
+    exa = FakeExa()
+    _lane_search(focus, exa, seed_prefs(exclude_domains=["a.com"]))
+    assert exa.search_filters == [expected]
+
+
+@pytest.mark.parametrize("focus", ["web", "people", "company", "publication"])
+def test_filters_every_search_requests_max_hits(focus: str):
+    exa = FakeExa()
+    _lane_search(focus, exa, seed_prefs(include_domains=["a.com"], recency="year"))
+    assert exa.search_nums == [5]
+
+
+def test_filters_add_no_key_to_the_tool_line():
+    plain, filtered = RecordingTracer(), RecordingTracer()
+    _lane_search("web", FakeExa(), seed_prefs(), plain)
+    _lane_search("web", FakeExa(), seed_prefs(exclude_domains=["a.com"]), filtered)
+    assert [set(line) for line in filtered.payloads("tool")] == [
+        set(line) for line in plain.payloads("tool")
+    ]
+
+
+def _research_prompt(focus: str, prefs: dict) -> str:
+    llm = FakeLLM(tool_name=_LANE_TOOLS[focus])
+    topic = {"id": "t0_1", "query": "define X", "focus": focus, "status": "pending"}
+    research_agent(_payload(topic=topic, prefs=prefs), runtime(llm=llm))
+    return llm.last_tool_loop_messages[0].content
+
+
+@pytest.mark.parametrize("focus", ["web", "people", "company", "publication"])
+def test_bias_research_prompt_holds_the_primary_line_on_every_lane(focus: str):
+    prompt = _research_prompt(focus, seed_prefs(prefer_primary=True))
+    assert "Prefer official and primary sources" in prompt
+
+
+def test_bias_research_prompt_has_no_primary_line_by_default():
+    assert "Prefer official and primary sources" not in _research_prompt(
+        "web", seed_prefs()
+    )

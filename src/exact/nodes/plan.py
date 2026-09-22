@@ -15,9 +15,16 @@ from exact.models import (
     TopicFocus,
     render_prior_queries,
 )
+from exact.prefs import state_prefs
 from exact.usage import StructuredOutputError, invoke_structured
 
 type ResearchRoute = Literal["write_report"] | list[Send]
+
+# The lane each restricting source mix moves a topic off, and onto.
+_LANE_CHANGES: dict[str, tuple[TopicFocus, TopicFocus]] = {
+    "web": ("publication", "web"),
+    "academic": ("web", "publication"),
+}
 
 
 def _fallback_focus(brief: dict) -> TopicFocus:
@@ -52,9 +59,20 @@ def _planned_queries(decision: PlanDecision, cap: int) -> list[PlannedTopic]:
     return [t for t in decision.topics if t.query and t.query.strip()][:cap]
 
 
+def _retarget(topics: list[PlannedTopic], source_mix: str) -> list[PlannedTopic]:
+    """Move topics onto the lanes a restricting ``source_mix`` allows."""
+    change = _LANE_CHANGES.get(source_mix)
+    if change is None:
+        return topics
+    old, new = change
+    return [
+        t.model_copy(update={"focus": new}) if t.focus == old else t for t in topics
+    ]
+
+
 def _focus_errors(topics: list[PlannedTopic]) -> list[str]:
     return [
-        f"plan: dropped unknown topic focus {t.raw_focus!r}; used web"
+        f"plan: dropped unknown topic focus {t.raw_focus!r}; used {t.focus}"
         for t in topics
         if t.raw_focus
     ]
@@ -150,6 +168,7 @@ def _plan_decision(
                     followups=state.get("followups") or "(none)",
                     first_cap=first_cap,
                     followup_cap=followup_cap,
+                    bias=prompts.plan_bias(state_prefs(state)),
                 )
             ),
             HumanMessage(content="Plan sub-topics."),
@@ -172,7 +191,8 @@ def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
     prior = _prior_queries(state)
     wave = int(state.get("iteration") or 0)
     first_cap, followup_cap = _topic_caps(state, runtime)
-    fallback = _fallback_topics(state, brief, followup_cap)
+    source_mix = state_prefs(state)["source_mix"]
+    fallback = _retarget(_fallback_topics(state, brief, followup_cap), source_mix)
     errors: list[str] = []
     try:
         decision, usage = _plan_decision(
@@ -185,7 +205,10 @@ def plan_topics(state: ExactState, runtime: Runtime) -> ExactState:
         decision = PlanDecision(topics=[], reason="structured output fallback")
         usage = []
         errors = [str(exc)]
-    planned = _planned_queries(decision, first_cap if wave == 0 else followup_cap)
+    planned = _retarget(
+        _planned_queries(decision, first_cap if wave == 0 else followup_cap),
+        source_mix,
+    )
     errors += _focus_errors(planned)
     topics = _wave_topics(planned, fallback, prior, wave)
     out: ExactState = {
@@ -208,10 +231,11 @@ def route_research(state: ExactState) -> ResearchRoute:
         return "write_report"
     brief = state.get("brief") or {}
     prior = state.get("prior_titles") or []
+    prefs = state_prefs(state)
     return [
         Send(
             "research_agent",
-            {"topic": t, "brief": brief, "prior_titles": prior},
+            {"topic": t, "brief": brief, "prior_titles": prior, "prefs": prefs},
         )
         for t in topics
     ]

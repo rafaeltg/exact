@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import threading
-from typing import NamedTuple
+from collections.abc import Mapping
+from typing import Any, NamedTuple
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
@@ -18,6 +19,7 @@ from exact.models import (
     Source,
     focus_label,
 )
+from exact.prefs import exa_filters, filter_suffix, state_prefs
 from exact.tools.exa import ExaClient
 from exact.trace import Tracer, clip_error, crumb, wave_of
 from exact.usage import (
@@ -28,6 +30,9 @@ from exact.usage import (
 
 # Hard ceiling on strings returned into the create_agent tool loop.
 TOOL_TEXT_MAX = 8000
+
+# The lanes whose searches send the domain and date filters.
+_FILTERED_LANES = frozenset({"web", "publication"})
 
 
 def clip_tool_text(text: str) -> str:
@@ -176,16 +181,19 @@ class _Bag:
 class _Tools:
     """LangChain tool implementations for one research worker."""
 
-    def __init__(self, bag: _Bag, exa: ExaClient):
+    def __init__(self, bag: _Bag, exa: ExaClient, filters: Mapping[str, Any]):
         self.bag = bag
         self.exa = exa
+        self.filters = filters
 
     def exa_search(self, query: str) -> str:
         """Search the web with Exa."""
         args = {"query": query}
         self.bag.note("exa_search", args)
         return self.bag.call(
-            "exa_search", lambda: self.exa.search(query, num=self.bag.max_hits), args
+            "exa_search",
+            lambda: self.exa.search(query, num=self.bag.max_hits, filters=self.filters),
+            args,
         )
 
     def exa_people_search(self, query: str) -> str:
@@ -227,7 +235,10 @@ class _Tools:
         return self.bag.call(
             "exa_publication_search",
             lambda: self.exa.search(
-                query, num=self.bag.max_hits, category="publication"
+                query,
+                num=self.bag.max_hits,
+                category="publication",
+                filters=self.filters,
             ),
             args,
         )
@@ -249,13 +260,21 @@ class _Tools:
         ]
 
 
-def _gap_kind(bag: _Bag, focus: str) -> str:
-    """Why a lane returned nothing; the lane names itself so waves stay apart."""
+def _gap_kind(bag: _Bag, focus: str, suffix: str) -> str:
+    """Why a lane returned nothing; the lane names itself so waves stay apart.
+
+    ``suffix`` names the lane's active filters, which may be why it is empty.
+    """
     if bag.errors:
-        return f"lane {focus}: retrieval failed"
+        return f"lane {focus}: retrieval failed{suffix}"
     if bag.saw_hits:
-        return f"lane {focus}: no new sources"
-    return f"lane {focus}: no sources"
+        return f"lane {focus}: no new sources{suffix}"
+    return f"lane {focus}: no sources{suffix}"
+
+
+def _gap_suffix(focus: str, filters: Mapping[str, Any]) -> str:
+    """The filter tail of a lane gap; only a filtered lane has one."""
+    return filter_suffix(filters) if focus in _FILTERED_LANES else ""
 
 
 def _empty_finding(
@@ -340,7 +359,7 @@ def _agent_messages(result) -> list:
 
 
 def _run_agent(
-    runtime: Runtime, tools: _Tools, topic: dict, brief: dict, prior
+    runtime: Runtime, tools: _Tools, topic: dict, brief: dict, prior, prefs: dict
 ) -> list:
     settings = runtime.settings
     model = runtime.model("research")
@@ -356,6 +375,7 @@ def _run_agent(
             focus=focus,
             must_cover=brief.get("must_cover") or [],
             prior=prior or "(none)",
+            bias=prompts.research_bias(prefs),
         ),
         middleware=[
             ModelCallLimitMiddleware(
@@ -389,14 +409,17 @@ def research_agent(state: ResearchPayload, runtime: Runtime) -> ExactState:
         topic_id, state.get("prior_titles") or [], settings.max_hits, runtime.tracer
     )
     exa = _client(runtime, settings)
-    tools = _Tools(bag, exa)
-    loop_usage = _run_agent(runtime, tools, topic, brief, bag.prior)
+    prefs = state_prefs(state)
+    filters = exa_filters(prefs)
+    tools = _Tools(bag, exa, filters)
+    loop_usage = _run_agent(runtime, tools, topic, brief, bag.prior, prefs)
     if not bag.collected:
+        focus = topic.get("focus") or "web"
         return _with_degraded(
             _empty_finding(
                 topic_id,
                 bag.errors,
-                _gap_kind(bag, topic.get("focus") or "web"),
+                _gap_kind(bag, focus, _gap_suffix(focus, filters)),
                 loop_usage + bag.usage,
             ),
             exa,

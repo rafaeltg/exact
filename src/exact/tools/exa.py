@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -10,6 +11,13 @@ from exa_py import Exa
 from exact.models import Source, TopicFocus
 
 _DOI_HOSTS = frozenset({"doi.org", "dx.doi.org"})
+
+# The raw ``/search`` body of each filter argument; ``request`` does no casing.
+_CAMEL_FILTERS = {
+    "include_domains": "includeDomains",
+    "exclude_domains": "excludeDomains",
+    "start_published_date": "startPublishedDate",
+}
 _MAX_NAMED_AUTHORS = 3
 
 
@@ -282,13 +290,22 @@ class ExaClient:
     ) -> list[Source]:
         return [self._source(i, it, fallback_url, focus) for i, it in enumerate(items)]
 
-    def _search_contents(self, query: str, num: int, category: str | None):
+    def _search_contents(
+        self,
+        query: str,
+        num: int,
+        category: str | None,
+        filters: Mapping[str, Any] | None,
+    ):
         kwargs: dict[str, Any] = {"num_results": num, "highlights": True}
         if category is not None:
             kwargs["category"] = category
+        kwargs.update(filters or {})
         return self._exa().search_and_contents(query, **kwargs)
 
-    def _publication_items(self, query: str, num: int) -> list[Any]:
+    def _publication_items(
+        self, query: str, num: int, filters: Mapping[str, Any] | None
+    ) -> list[Any]:
         """Publication hits through the raw endpoint, so entities survive.
 
         exa-py 2.20.0 parses only person and company entities, so the typed
@@ -300,7 +317,7 @@ class ExaClient:
         if not hasattr(sdk, "request"):
             items = _as_items(
                 _invoke(
-                    lambda: self._search_contents(query, num, "publication"),
+                    lambda: self._search_contents(query, num, "publication", filters),
                     self.timeout,
                 )
             )
@@ -317,18 +334,29 @@ class ExaClient:
             "category": "publication",
             "contents": {"highlights": True},
         }
+        for key, value in (filters or {}).items():
+            body[_CAMEL_FILTERS[key]] = value
         return _as_items(_invoke(lambda: sdk.request("/search", body), self.timeout))
 
     def search(
-        self, query: str, num: int = 5, *, category: str | None = None
+        self,
+        query: str,
+        num: int = 5,
+        *,
+        category: str | None = None,
+        filters: Mapping[str, Any] | None = None,
     ) -> list[Source]:
-        """Search Exa; ``category`` selects the retrieval lane."""
+        """Search Exa; ``category`` selects the lane, ``filters`` the domains and dates.
+
+        ``filters`` holds the snake-case Exa filter arguments.
+        """
         if category == "publication":
-            items = self._publication_items(query, num)
+            items = self._publication_items(query, num, filters)
         else:
             items = _as_items(
                 _invoke(
-                    lambda: self._search_contents(query, num, category), self.timeout
+                    lambda: self._search_contents(query, num, category, filters),
+                    self.timeout,
                 )
             )
         return self._map(items, "", _as_focus(category))

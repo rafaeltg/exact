@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from exact.graph import build_graph
-from exact.status import format_effort, format_plan, format_update
-from tests.fakes import graph_seed, runtime
+from exact.status import format_effort, format_plan, format_prefs, format_update
+from tests.fakes import graph_seed, runtime, seed_prefs
 
 
 def test_format_plan_lists_topics_before_any_research_line():
@@ -313,3 +313,16 @@ def test_a_repeated_error_appears_once_under_verbose():
         verbose=True,
     )
     assert lines.count("  error: boom") == 1
+
+
+def test_format_prefs_prints_default_when_every_preference_is_default():
+    assert format_prefs(seed_prefs()) == "prefs=default"
+
+
+def test_format_prefs_lists_non_default_preferences_in_table_order():
+    prefs = seed_prefs(
+        recency="month", exclude_domains=["b.com", "a.com"], tone="plain"
+    )
+    assert format_prefs(prefs) == (
+        "prefs tone=plain exclude_domains=b.com,a.com recency=month"
+    )

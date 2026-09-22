@@ -22,7 +22,7 @@ from exact.usage import (
     invoke_structured,
     invoke_text,
 )
-from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime
+from tests.fakes import FakeElicit, FakeExa, FakeLLM, runtime, seed_prefs
 
 
 def test_format_usage_haiku_tokens_literal_usd():
@@ -230,7 +230,7 @@ def test_structured_decide_clarify_records_usage_metadata():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },
@@ -465,7 +465,7 @@ def test_decide_clarify_skips_when_thinking_breaks_structured_output():
     out = decide_clarify(
         {
             "initial_query": "What is X?",
-            "skip_clarify": False,
+            "prefs": seed_prefs(),
             "clarify_turns": 0,
             "scout_hits": [{"title": "Source A", "provider": "exa", "snippet": "X"}],
         },

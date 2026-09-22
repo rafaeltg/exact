@@ -7,6 +7,7 @@ import sys
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -22,13 +23,21 @@ from exact.config import (
     Runtime,
     Settings,
     effort_snapshot,
+    resolve_prefs,
     role_max_tokens,
     role_model_id,
 )
 from exact.graph import build_graph
 from exact.nodes.write import format_references
+from exact.prefs import (
+    PREF_BY_FIELD,
+    PREF_FIELDS,
+    PrefField,
+    legacy_prefs,
+    pref_mismatches,
+)
 from exact.sink import emit_chunk
-from exact.status import format_effort, format_update
+from exact.status import format_effort, format_prefs, format_update
 from exact.trace import JsonlTracer, NullTracer, Tracer, clip_error
 from exact.usage import format_usage
 
@@ -37,6 +46,25 @@ type Sink = Callable[[str, Any], None]
 
 # The environment names of the boolean knobs, by ``Settings`` field.
 _BOOL_KNOB_ENV = {"exact_trace": "EXACT_TRACE", "exact_verbose": "EXACT_VERBOSE"}
+
+# The rank key of the ``--skip-clarify`` conflict, which no ``Settings`` field owns.
+_CLARIFY_CONFLICT = "--skip-clarify"
+
+# When several knobs fail, the first key in this order is the one reported.
+_FAILURE_ORDER = (
+    "exact_effort",
+    *(pref.field for pref in PREF_FIELDS),
+    _CLARIFY_CONFLICT,
+    *_BOOL_KNOB_ENV,
+)
+
+# No ``choices`` on an enum flag: an unknown value must fail with the same
+# message the env path produces, not with argparse's own.
+_FLAG_SHAPE: dict[str, dict[str, Any]] = {
+    "enum": {},
+    "hosts": {"action": "append"},
+    "bool": {"action": argparse.BooleanOptionalAction},
+}
 
 
 def _print_interrupt(payload: dict) -> None:
@@ -77,10 +105,10 @@ def _stream(app, payload, config, *, sink: Sink, verbose: bool) -> None:
             sink(node, update)
 
 
-def _seed(args, settings: Settings) -> dict:
+def _seed(args, settings: Settings, prefs: dict[str, Any]) -> dict:
     return {
         "initial_query": " ".join(args.query),
-        "skip_clarify": args.skip_clarify,
+        "prefs": prefs,
         "effort": settings.exact_effort,
         "max_iterations": settings.max_iterations,
         "max_clarify_turns": settings.max_clarify_turns,
@@ -173,39 +201,128 @@ def _parse_argv(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="Print detail lines under the status lines. Overrides EXACT_VERBOSE.",
     )
+    _add_pref_flags(parser)
     return parser.parse_args(argv)
 
 
-def _effort_error(exc: ValidationError) -> str | None:
-    """The user-facing message for a rejected effort; ``None`` for anything else."""
-    for err in exc.errors():
-        if err["loc"] == ("exact_effort",):
-            return (
-                f"effort must be 'normal' or 'max'; got {err['input']!r} "
-                "(--effort or EXACT_EFFORT)"
-            )
+def _add_pref_flags(parser: argparse.ArgumentParser) -> None:
+    """One flag per preference; ``None`` means "fall to the Settings field"."""
+    for pref in PREF_FIELDS:
+        parser.add_argument(
+            pref.flag,
+            dest=pref.name,
+            default=None,
+            help=f"Overrides {pref.env}.",
+            **_FLAG_SHAPE[pref.kind],
+        )
+
+
+def _pref_overrides(args: argparse.Namespace) -> dict[str, Any]:
+    """The ``Settings`` fields the preference flags set, by field name."""
+    overrides = {
+        pref.field: getattr(args, pref.name)
+        for pref in PREF_FIELDS
+        if getattr(args, pref.name) is not None
+    }
+    if args.skip_clarify and args.clarify_mode is None:
+        overrides["exact_clarify_mode"] = "skip"
+    return overrides
+
+
+def _clarify_conflict(args: argparse.Namespace) -> str | None:
+    """The refusal of ``--skip-clarify`` beside another ``--clarify`` mode."""
+    if args.skip_clarify and args.clarify_mode not in (None, "skip"):
+        return f"--skip-clarify cannot combine with --clarify {args.clarify_mode}"
     return None
 
 
-def _knob_error(exc: ValidationError) -> str | None:
-    """The user-facing message for a rejected boolean knob; ``None`` otherwise."""
-    for err in exc.errors():
-        name = _BOOL_KNOB_ENV.get(str(err["loc"][0])) if err["loc"] else None
-        if name is not None:
-            return f"{name} must be a boolean such as 0 or 1; got {err['input']!r}"
+def _pref_message(err: Mapping[str, Any], pref: PrefField) -> str:
+    """The user-facing message for one rejected preference."""
+    source = f"({pref.flag} or {pref.env})"
+    got = f"got {err['input']!r} {source}"
+    match err["type"]:
+        case "literal_error":
+            values = ", ".join(repr(value) for value in pref.values)
+            return f"{pref.name} must be one of {values}; {got}"
+        case "bool_parsing":
+            return f"{pref.name} must be a boolean such as 0 or 1; {got}"
+        case "value_error":
+            return str(err["ctx"]["error"])
+        case _:
+            return f"{pref.name}: {err['msg']}; {got}"
+
+
+def _failure_text(err: Mapping[str, Any]) -> str | None:
+    """The user-facing message for one rejected knob; ``None`` for other fields."""
+    field = str(err["loc"][0]) if err["loc"] else ""
+    if field == "exact_effort":
+        return (
+            f"effort must be 'normal' or 'max'; got {err['input']!r} "
+            "(--effort or EXACT_EFFORT)"
+        )
+    if field in PREF_BY_FIELD:
+        return _pref_message(err, PREF_BY_FIELD[field])
+    if field in _BOOL_KNOB_ENV:
+        name = _BOOL_KNOB_ENV[field]
+        return f"{name} must be a boolean such as 0 or 1; got {err['input']!r}"
     return None
 
 
-def _resolve_settings(effort: str | None) -> Settings:
-    """Build the run's settings, with the flag winning over the environment."""
-    load_dotenv()
+def _first_failure(exc: ValidationError | None, conflict: str | None) -> str | None:
+    """The message of the failure that ranks first; ``None`` when none ranks."""
+    found: dict[str, str] = {}
+    if conflict is not None:
+        found[_CLARIFY_CONFLICT] = conflict
+    for err in exc.errors() if exc is not None else ():
+        text = _failure_text(err)
+        if text is not None:
+            found.setdefault(str(err["loc"][0]), text)
+    return next((found[key] for key in _FAILURE_ORDER if key in found), None)
+
+
+def _build_settings(
+    overrides: dict[str, Any], conflict: str | None, base: Settings | None
+) -> Settings:
+    """Build settings with ``overrides`` on top; exit on the first refusal.
+
+    With a ``base``, its values stand in for the environment, so an injected
+    runtime keeps everything but what a flag sets.
+    """
     try:
-        return Settings(exact_effort=effort) if effort is not None else Settings()
+        if base is None:
+            settings = Settings(**overrides)
+        else:
+            settings = Settings(_env_file=None, **{**base.model_dump(), **overrides})
     except ValidationError as exc:
-        message = _effort_error(exc) or _knob_error(exc)
+        message = _first_failure(exc, conflict)
         if message is None:
             raise
         raise SystemExit(message) from exc
+    if conflict is not None:
+        raise SystemExit(conflict)
+    return settings
+
+
+def _resolve_settings(args: argparse.Namespace) -> Settings:
+    """Build the run's settings, with each flag winning over the environment."""
+    load_dotenv()
+    overrides = _pref_overrides(args)
+    if args.effort is not None:
+        overrides["exact_effort"] = args.effort
+    return _build_settings(overrides, _clarify_conflict(args), None)
+
+
+def _run_runtime(args: argparse.Namespace, runtime: Runtime | None) -> Runtime:
+    """The live runtime, or the injected one with the preference flags applied.
+
+    ``--effort`` never reaches an injected runtime: its settings fix the depth.
+    """
+    if runtime is None:
+        return Runtime.from_env(_resolve_settings(args))
+    settings = _build_settings(
+        _pref_overrides(args), _clarify_conflict(args), runtime.settings
+    )
+    return replace(runtime, settings=settings)
 
 
 def _sqlite_saver(path: str) -> SqliteSaver:
@@ -248,6 +365,42 @@ def _guard_effort(values: Mapping[str, Any], effort: str) -> None:
             f"this run resolved effort={effort}; "
             f"rerun with --effort {stored} or use a new --thread-id"
         )
+
+
+def _stored_prefs(
+    saver: Any, config: dict[str, Any], values: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The thread's ``prefs``, or the ones a pre-``prefs`` checkpoint implies.
+
+    The old ``skip_clarify`` channel is no longer in the graph state, so only
+    the raw checkpoint still shows it.
+    """
+    if values.get("prefs"):
+        return values["prefs"]
+    channels = saver.get_tuple(config).checkpoint["channel_values"]
+    return legacy_prefs(bool(channels.get("skip_clarify")))
+
+
+def _guard_prefs(stored: Mapping[str, Any], resolved: Mapping[str, Any]) -> None:
+    """Refuse a resume whose preferences differ from the thread's."""
+    parts = pref_mismatches(stored, resolved)
+    if parts:
+        raise SystemExit(
+            f"preference mismatch: {'; '.join(parts)}; "
+            "rerun with the same preferences or use a new --thread-id"
+        )
+
+
+def _guard_thread(
+    saver: Any, config: dict[str, Any], values: Mapping[str, Any], seed: dict
+) -> dict[str, Any]:
+    """Refuse a resume that drifts from its thread; return the run's ``prefs``."""
+    if not values:
+        return seed["prefs"]
+    _guard_effort(values, seed["effort"])
+    stored = _stored_prefs(saver, config, values)
+    _guard_prefs(stored, seed["prefs"])
+    return stored
 
 
 def _run(
@@ -374,10 +527,13 @@ def _print_start(thread_id: str, opened: _TraceOpen, warnings: list[str]) -> Non
         print(warning, file=sys.stderr, flush=True)
 
 
-def _settings_payload(settings: Settings, snapshot: Mapping[str, Any]) -> dict:
-    """The run's resolved caps plus the configured model settings, with no key."""
+def _settings_payload(
+    settings: Settings, snapshot: Mapping[str, Any], prefs: Mapping[str, Any]
+) -> dict:
+    """The run's caps, model settings and full ``prefs``, with no key."""
     return {
         **snapshot,
+        "prefs": dict(prefs),
         "models": {role: role_model_id(settings, role) for role in ROLES},
         "max_tokens": {role: role_max_tokens(settings, role) for role in ROLES},
         "temperature": settings.exact_temperature,
@@ -395,11 +551,16 @@ class _Started(NamedTuple):
     verbose: bool
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def _begin_run(
     args: argparse.Namespace,
     runtime: Runtime,
     checkpointer: Any | None,
     new_id: Callable[[], str] | None,
+    now: Callable[[], datetime] | None,
 ) -> _Started:
     """Prepare one run and announce it; every startup refusal happens here."""
     settings = runtime.settings
@@ -409,12 +570,13 @@ def _begin_run(
     # A copy, never a mutation: every node closes over this one runtime.
     app = build_graph(replace(runtime, tracer=opened.tracer), checkpointer=saver)
     config = thread_config(thread_id, max_concurrency=settings.max_concurrency)
-    seed = _seed(args, settings)
+    seed = _seed(args, settings, resolve_prefs(settings, (now or _utc_now)()))
     snap = app.get_state(config)
     _print_start(thread_id, opened, _trace_warnings(opened, args, thread_id, snap))
-    _guard_effort(snap.values or {}, seed["effort"])
+    prefs = _guard_thread(saver, config, snap.values or {}, seed)
     snapshot = effort_snapshot(settings, snap.values or seed)
     print(format_effort(snapshot), flush=True)
+    print(format_prefs(prefs), flush=True)
     verbose = _verbose_on(args, settings)
     opened.tracer.emit(
         "run_start",
@@ -422,7 +584,7 @@ def _begin_run(
             "query": seed["initial_query"],
             "verbose": verbose,
             "resume": bool(snap.next),
-            "settings": _settings_payload(settings, snapshot),
+            "settings": _settings_payload(settings, snapshot, prefs),
         },
     )
     return _Started(app, config, seed, opened.tracer, verbose)
@@ -478,11 +640,12 @@ def main(
     checkpointer: Any | None = None,
     read_reply: Callable[[], str] | None = None,
     new_id: Callable[[], str] | None = None,
+    now: Callable[[], datetime] | None = None,
 ) -> int:
     """Run one research query; return 1 when dangling citations remain."""
     args = _parse_argv(argv)
-    runtime = runtime or Runtime.from_env(_resolve_settings(args.effort))
-    started = _begin_run(args, runtime, checkpointer, new_id)
+    runtime = _run_runtime(args, runtime)
+    started = _begin_run(args, runtime, checkpointer, new_id, now)
     sink = partial(emit_chunk, started.tracer)
     result: dict = {}
     try:

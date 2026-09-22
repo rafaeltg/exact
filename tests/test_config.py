@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -11,9 +12,11 @@ from exact.config import (
     Settings,
     chat_kwargs,
     effort_snapshot,
+    resolve_prefs,
     role_max_tokens,
     role_model_id,
 )
+from exact.prefs import PREF_FIELDS
 from exact.trace import NullTracer
 from tests.fakes import FakeLLM, RecordingTracer
 
@@ -235,3 +238,142 @@ def test_replacing_the_tracer_leaves_the_original_runtime_alone():
     copy = dataclasses.replace(rt, tracer=RecordingTracer())
     assert rt.tracer is original
     assert isinstance(copy.tracer, RecordingTracer)
+
+
+# ─── User preferences ───────────────────────────────────────────────────
+
+
+def test_each_preference_defaults_with_no_env():
+    settings = Settings(_env_file=None)
+    assert (
+        settings.exact_language,
+        settings.exact_tone,
+        settings.exact_length,
+        settings.exact_structure,
+        settings.exact_source_mix,
+        settings.exact_include_domains,
+        settings.exact_exclude_domains,
+        settings.exact_denylist,
+        settings.exact_recency,
+        settings.exact_prefer_primary,
+        settings.exact_news_bias,
+        settings.exact_clarify_mode,
+    ) == (
+        "auto",
+        "neutral",
+        "standard",
+        "report",
+        "auto",
+        [],
+        [],
+        "none",
+        "any",
+        False,
+        False,
+        "auto",
+    )
+
+
+@pytest.mark.parametrize(
+    "name, raw, field, expected",
+    [
+        ("EXACT_LANGUAGE", "es", "exact_language", "es"),
+        ("EXACT_TONE", "plain", "exact_tone", "plain"),
+        ("EXACT_LENGTH", "long", "exact_length", "long"),
+        ("EXACT_STRUCTURE", "memo", "exact_structure", "memo"),
+        ("EXACT_SOURCE_MIX", "academic", "exact_source_mix", "academic"),
+        ("EXACT_INCLUDE_DOMAINS", "a.com", "exact_include_domains", ["a.com"]),
+        ("EXACT_EXCLUDE_DOMAINS", "a.com", "exact_exclude_domains", ["a.com"]),
+        ("EXACT_DENYLIST", "social", "exact_denylist", "social"),
+        ("EXACT_RECENCY", "week", "exact_recency", "week"),
+        ("EXACT_PREFER_PRIMARY", "1", "exact_prefer_primary", True),
+        ("EXACT_NEWS_BIAS", "true", "exact_news_bias", True),
+        ("EXACT_CLARIFY_MODE", "prefer", "exact_clarify_mode", "prefer"),
+    ],
+)
+def test_a_preference_env_sets_its_field(
+    monkeypatch, name: str, raw: str, field: str, expected
+):
+    monkeypatch.setenv(name, raw)
+    assert getattr(Settings(_env_file=None), field) == expected
+
+
+def test_a_domain_preference_env_is_a_comma_separated_host_list(monkeypatch):
+    monkeypatch.setenv("EXACT_EXCLUDE_DOMAINS", "a.com, b.com")
+    assert Settings(_env_file=None).exact_exclude_domains == ["a.com", "b.com"]
+
+
+@pytest.mark.parametrize("raw", ["Executive", " executive", "executive ", "EXECUTIVE"])
+def test_an_enum_preference_matches_the_exact_lowercase_value(monkeypatch, raw: str):
+    monkeypatch.setenv("EXACT_TONE", raw)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+_INCLUDE_CONFLICT = (
+    "include domains cannot combine with exclude domains or a denylist "
+    "(--include-domain, --exclude-domain, --denylist)"
+)
+
+
+def test_settings_refuse_include_with_exclude_preferences():
+    with pytest.raises(ValidationError) as exc:
+        Settings(
+            _env_file=None,
+            exact_include_domains=["a.com"],
+            exact_exclude_domains=["b.com"],
+        )
+    assert _INCLUDE_CONFLICT in str(exc.value)
+
+
+def test_settings_refuse_include_with_a_denylist_preference():
+    with pytest.raises(ValidationError) as exc:
+        Settings(
+            _env_file=None, exact_include_domains=["a.com"], exact_denylist="social"
+        )
+    assert _INCLUDE_CONFLICT in str(exc.value)
+
+
+@pytest.mark.parametrize("pref", PREF_FIELDS, ids=lambda pref: pref.name)
+def test_every_preference_field_is_an_enum_a_boolean_or_a_host_list(pref):
+    """No preference takes free text: a sentence fails every field."""
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{pref.field: "write like a pirate"})
+
+
+def test_resolve_prefs_holds_every_d50_key_and_the_derived_values():
+    settings = Settings(
+        _env_file=None,
+        exact_tone="plain",
+        exact_exclude_domains=["quora.com", "a.com"],
+        exact_denylist="seo",
+        exact_recency="month",
+    )
+    prefs = resolve_prefs(settings, datetime(2026, 9, 21, 1, tzinfo=UTC))
+    assert prefs == {
+        "language": "auto",
+        "tone": "plain",
+        "length": "standard",
+        "structure": "report",
+        "source_mix": "auto",
+        "include_domains": [],
+        "exclude_domains": ["quora.com", "a.com"],
+        "denylist": "seo",
+        "recency": "month",
+        "prefer_primary": False,
+        "news_bias": False,
+        "clarify_mode": "auto",
+        "start_published_date": "2026-08-22",
+        "effective_exclude_domains": [
+            "quora.com",
+            "a.com",
+            "wikihow.com",
+            "ehow.com",
+            "answers.com",
+            "reference.com",
+            "medium.com",
+            "hubpages.com",
+            "ezinearticles.com",
+        ],
+    }
+    assert prefs["exclude_domains"] is not settings.exact_exclude_domains

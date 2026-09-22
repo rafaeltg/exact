@@ -106,6 +106,8 @@ EXACT_MODEL_WRITE=anthropic:claude-sonnet-4-5
 
 If `plan_topics` has no new query, the graph goes to `write_report`.
 
+`plan_topics` changes lanes by `prefs.source_mix`: `web` changes each `publication` topic to `web`, and `academic` changes each `web` topic to `publication`. `people` and `company` topics do not change; `auto` and `mixed` change nothing. The change applies to planner and fallback topics, after an unknown focus drops to `web` and before the dedup. The unknown-focus line names the final lane (`used <lane>`). A lane change writes no other `errors` line, and on a collision the first topic in planner order survives. The `PLAN` prompt does not change for `source_mix`.
+
 ---
 
 ## Clarification + Exa
@@ -129,7 +131,9 @@ If the model sets `needed=true` and scout hits exist, the question must contain 
 
 Routing flags `clarify_needed` and `continue_research` live on state (replace). Structured LLM parse failures skip clarify, fall back to a query brief / single topic, or force write — they do not crash the run.
 
-The scout publication lane uses the query academic heuristic only (scout is before clarify); no key gates it. Brief intent also promotes `web` → `academic` when clarification text or a picked option label/description matches the heuristic.
+`prefs.source_mix` gates the scout publication lane: `auto` runs it on the query academic heuristic only (scout is before clarify), `web` never runs it, and `academic` and `mixed` always run it. No key gates it. Both scout legs send the filters. A filtered leg with no hits appends `exa scout: no hits (filters: <names>)` or `exa publication scout: no hits (filters: <names>)`; a leg that raises keeps only its failure line.
+
+`decide_clarify` reads `prefs.clarify_mode`. `skip` makes no router call. `prefer` swaps the skip-bias sentence of `DECIDE_CLARIFY` for one that prefers to ask. The prompt names each axis that a preference settles (`source_mix`: web versus academic; `recency`: time range; `tone`: audience) and tells the model not to ask about it. A `language` other than `auto` makes the model ask in that language and quote scout titles unchanged. Brief intent also promotes `web` → `academic` when clarification text or a picked option label/description matches the heuristic.
 
 ---
 
@@ -138,7 +142,7 @@ The scout publication lane uses the query academic heuristic only (scout is befo
 ```
  plan_topics
       |
-      |  Send({ topic, brief, prior_titles })
+      |  Send({ topic, brief, prior_titles, prefs })
       +------------------+
       v                  v
  research_agent     research_agent
@@ -156,6 +160,8 @@ The scout publication lane uses the query academic heuristic only (scout is befo
 
 Parent never sees raw tool I/O. The worker ReAct loop is an ephemeral LangChain `create_agent` invoked from the `research_agent` node, not a Python `for`. Spend is still capped in code (`ModelCallLimitMiddleware` counts model-call rounds; one round may run several tools). Tool strings into the loop are clipped at 8000 chars.
 
+A `web` or `publication` lane is filtered when `prefs` holds an active filter. Each gap of a filtered lane ends with a space and `(filters: <names>)`, with the names in `include`, `exclude`, `recency` order, for example `lane web: no sources (filters: exclude, recency)`. A search attempt is not necessary. `prefer_primary` adds one primary-source line to `RESEARCH_SYS` on every lane.
+
 ---
 
 ## Tools
@@ -169,6 +175,13 @@ Parent never sees raw tool I/O. The worker ReAct loop is an ephemeral LangChain 
 ```
 
 Scout runs a general Exa search, plus an Exa `category=publication` search on an academic signal; the lanes are interleaved before ids are minted. The planner assigns each topic a `focus` lane, and the worker binds only that lane's search tool plus `exa_highlights` — the agent no longer picks between categories. The planner is the only source of topics on every wave; topics are `{query, focus}` and identity is the pair. A wave with no usable planner topic falls back to the unused follow-ups, else the brief question; the fallback skips the cross-wave dedup, because no planner rephrased it around `prior`, so a retry of a failed lane still runs. Entity metadata (person, company, publication) is folded into `Source.snippet`.
+
+`exa_search`, `exa_publication_search` and both scout legs send the Exa filter arguments `include_domains`, `exclude_domains` and `start_published_date`. The raw publication body uses `includeDomains`, `excludeDomains` and `startPublishedDate`; the degraded path uses the snake-case names. `exa_people_search` and `exa_company_search` send none. An empty filter leaves its key out. With `recency` set, Exa drops pages with no known publish date. The `denylist` presets:
+
+```
+ social  facebook.com instagram.com tiktok.com x.com twitter.com reddit.com pinterest.com linkedin.com
+ seo     quora.com wikihow.com ehow.com answers.com reference.com medium.com hubpages.com ezinearticles.com
+```
 
 `ExaClient` accepts an injected SDK and a clock. Each search and highlights call uses the HTTP timeout. `ElicitClient` is dormant: it accepts an injected `post` and a clock, but no live path builds it. Each client retries once on timeout, HTTP 429, or HTTP 5xx.
 
@@ -189,9 +202,12 @@ Scout runs a general Exa search, plus an Exa `category=publication` search on an
  uncovered
  clarify_needed
  continue_research
+ prefs  (frozen at the seed; never written again)
 
  messages  +=  clarify thread only (add_messages)
 ```
+
+`prefs` holds the twelve preferences under their state names (`language`, `tone`, `length`, `structure`, `source_mix`, `include_domains`, `exclude_domains`, `denylist`, `recency`, `prefer_primary`, `news_bias`, `clarify_mode`), plus the derived `start_published_date` and `effective_exclude_domains`. Nodes read `prefs` from state, never from `Settings`. There is no `skip_clarify` channel.
 
 `usage` events are LLM and vendor call counts/tokens. The CLI prints a `## Usage` footer with estimated USD (dated rates in `usage.py`), including cache_read / cache_creation when present (Anthropic cache multipliers). Elicit calls are counted at $0. Vendor retries are not metered. See spec §7b.
 
@@ -218,6 +234,47 @@ The CLI also prints `## References` from `sources` after the report so citations
 Vendor exception: `errors` + finding `gaps=["retrieval failed"]`. Empty hits: finding `gaps=["no sources"]`. Prior-title drop that leaves the bag empty: finding `gaps=["no new sources"]`. The graph still finishes.
 
 If `uncovered` contains a `dangling:` item, the CLI exits with status `1`.
+
+---
+
+## Preferences
+
+```
+ flag                 env                    values
+ --lang               EXACT_LANGUAGE         auto en es pt
+ --tone               EXACT_TONE             neutral academic executive plain
+ --length             EXACT_LENGTH           short standard long
+ --structure          EXACT_STRUCTURE        report memo bullets
+ --sources            EXACT_SOURCE_MIX       auto web academic mixed
+ --include-domain     EXACT_INCLUDE_DOMAINS  hosts (flag repeats; env comma list)
+ --exclude-domain     EXACT_EXCLUDE_DOMAINS  hosts (flag repeats; env comma list)
+ --denylist           EXACT_DENYLIST         none social seo
+ --since              EXACT_RECENCY          any year month week
+ --[no-]prefer-primary EXACT_PREFER_PRIMARY  boolean
+ --[no-]news          EXACT_NEWS_BIAS        boolean
+ --clarify            EXACT_CLARIFY_MODE     auto skip prefer   (--skip-clarify = skip)
+```
+
+A preference never changes a cap, a hit count, a model or the temperature. Flag > environment > default. Each flag also reaches an injected `Runtime`; `--effort` does not. `Settings` validators hold the checks; the CLI holds only the `--skip-clarify` conflict. The first failure is reported: effort, preferences in table order, the `--skip-clarify` conflict, then the trace and verbose booleans. Messages:
+
+```
+ <name> must be one of '<v1>', …; got '<value>' (<flag> or <ENV>)
+ <name> must be a boolean such as 0 or 1; got '<value>' (<flag> or <ENV>)
+ <name>: '<entry>' is not a host name (<flag> or <ENV>)
+ <name> holds <n> hosts; at most 20 (<flag> or <ENV>)
+ include domains cannot combine with exclude domains or a denylist (--include-domain, --exclude-domain, --denylist)
+ --skip-clarify cannot combine with --clarify <value>
+```
+
+The seed writes `prefs` once. `recency` becomes a UTC start date at the seed instant and is reused on every resume. A resume compares the resolved preferences with the checkpoint (host lists as sets) after the effort guard, and exits `1` on a difference with no trace line:
+
+```
+ preference mismatch: <name> thread=<v> run=<v>; …; rerun with the same preferences or use a new --thread-id
+```
+
+A checkpoint with no `prefs` reads as defaults, or as `clarify_mode=skip` when it holds `skip_clarify=true`. After the `effort=` line the CLI prints `prefs=default`, or `prefs` plus each non-default `name=value`, in table order. `run_start.settings.prefs` holds the full dict.
+
+`generate_brief` forces `intent` from a set `source_mix`, sets `audience` from a non-neutral `tone`, and appends host notes to `exclusions`. `PLAN` gets a primary-source line with `prefer_primary` and a news line with `news_bias`. `WRITE` gets one line each for `language`, `tone` (none for `neutral`), `length` (300–500, 800–1500, 2000–3500 words) and `structure` (`report`, `memo`, `bullets`). `## Open questions` stays in English, and its bullets need no citation under `bullets`. `length=long` can end early under a write cap below 8192 tokens.
 
 ---
 

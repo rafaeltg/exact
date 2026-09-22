@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from exact.graph import build_graph
 from exact.models import PlanDecision, ReflectDecision
 from exact.nodes.plan import plan_topics, route_research
 from exact.nodes.reflect import reflect
-from tests.fakes import FakeLLM, runtime
+from tests.fakes import FakeExa, FakeLLM, graph_seed, runtime, seed_prefs
 
 
 def _state(**overrides) -> dict:
@@ -356,3 +357,129 @@ def test_the_reflect_prompt_names_the_follow_up_cap(effort: str, expected: int):
     )
     prompt = llm.with_structured_output(ReflectDecision).last_messages[0].content
     assert f"give 1-{expected} follow-up" in prompt
+
+
+# ─── Lanes by source mix ────────────────────────────────────────────────
+
+
+def _plan_under(source_mix: str, *topics, **state) -> dict:
+    llm = FakeLLM(plan=PlanDecision(topics=list(topics)))
+    return plan_topics(
+        _state(prefs=seed_prefs(source_mix=source_mix), **state), runtime(llm=llm)
+    )
+
+
+def _lanes(out: dict) -> list[tuple[str, str]]:
+    return [(t["query"], t["focus"]) for t in out["topics"]]
+
+
+def test_lanes_sources_web_changes_a_publication_topic_to_web():
+    out = _plan_under("web", {"query": "trials of X", "focus": "publication"})
+    assert _lanes(out) == [("trials of X", "web")]
+
+
+def test_lanes_sources_academic_changes_a_web_topic_to_publication():
+    out = _plan_under("academic", {"query": "news on X", "focus": "web"})
+    assert _lanes(out) == [("news on X", "publication")]
+
+
+def test_lanes_collision_keeps_the_first_topic_with_no_error_line():
+    out = _plan_under(
+        "web",
+        {"query": "q", "focus": "publication"},
+        {"query": "q", "focus": "web"},
+    )
+    assert [(t["id"], t["query"], t["focus"]) for t in out["topics"]] == [
+        ("t0_1", "q", "web")
+    ]
+    assert "errors" not in out
+
+
+def test_lanes_unknown_focus_line_names_the_final_lane():
+    out = _plan_under("academic", {"query": "q", "focus": "news"})
+    assert out["errors"] == [
+        "plan: dropped unknown topic focus 'news'; used publication"
+    ]
+    assert _lanes(out) == [("q", "publication")]
+
+
+@pytest.mark.parametrize(
+    "source_mix, intent, expected",
+    [("web", "academic", "web"), ("academic", "web", "publication")],
+)
+def test_lanes_fallback_topic_follows_the_change(
+    source_mix: str, intent: str, expected: str
+):
+    out = plan_topics(
+        _state(
+            brief={"question": "What is X?", "intent": intent},
+            prefs=seed_prefs(source_mix=source_mix),
+        ),
+        runtime(llm=FakeLLM(fail_structured=True)),
+    )
+    assert _lanes(out) == [("What is X?", expected)]
+
+
+@pytest.mark.parametrize("source_mix", ["web", "academic", "mixed", "auto"])
+def test_lanes_people_and_company_topics_keep_their_lane(source_mix: str):
+    out = _plan_under(
+        source_mix,
+        {"query": "who", "focus": "people"},
+        {"query": "firm", "focus": "company"},
+    )
+    assert _lanes(out) == [("who", "people"), ("firm", "company")]
+
+
+def _plan_prompt(prefs: dict) -> str:
+    llm = FakeLLM()
+    plan_topics(_state(prefs=prefs), runtime(llm=llm))
+    return llm.with_structured_output(PlanDecision).last_messages[0].content
+
+
+def test_lanes_plan_prompt_does_not_change_for_source_mix():
+    assert _plan_prompt(seed_prefs(source_mix="academic")) == _plan_prompt(
+        seed_prefs(source_mix="auto")
+    )
+
+
+# ─── Search bias ────────────────────────────────────────────────────────
+
+_PRIMARY = "Prefer official and primary sources"
+_NEWS = "Shape web-lane queries as news queries"
+
+
+def test_bias_plan_prompt_holds_the_primary_line_only_with_prefer_primary():
+    assert _PRIMARY in _plan_prompt(seed_prefs(prefer_primary=True))
+    assert _PRIMARY not in _plan_prompt(seed_prefs())
+
+
+def test_bias_plan_prompt_holds_the_news_line_only_with_news_bias():
+    assert _NEWS in _plan_prompt(seed_prefs(news_bias=True))
+    assert _NEWS not in _plan_prompt(seed_prefs())
+
+
+def _news_line(prompt: str) -> str:
+    (line,) = [line for line in prompt.splitlines() if line.startswith(_NEWS)]
+    return line
+
+
+def test_bias_news_line_is_the_same_with_and_without_recency():
+    assert _news_line(_plan_prompt(seed_prefs(news_bias=True))) == _news_line(
+        _plan_prompt(seed_prefs(news_bias=True, recency="week"))
+    )
+
+
+def _graph_filters(**prefs) -> list[dict]:
+    exa = FakeExa()
+    build_graph(runtime(exa=exa)).invoke(
+        graph_seed(prefs=seed_prefs(clarify_mode="skip", **prefs)),
+        {"configurable": {"thread_id": "t-bias"}},
+    )
+    return exa.search_filters
+
+
+def test_bias_leaves_the_exa_filter_arguments_unchanged():
+    base = {"exclude_domains": ["a.com"], "recency": "week"}
+    assert _graph_filters(**base, prefer_primary=True, news_bias=True) == (
+        _graph_filters(**base)
+    )

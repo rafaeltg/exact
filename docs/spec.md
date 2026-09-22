@@ -89,7 +89,7 @@ app = workflow.compile(checkpointer=SqliteSaver(conn))
 # HITL is interrupt() inside ask_user. No interrupt_before.
 ```
 
-**`research_agent`:** parent graph node. Input `{topic, brief, prior_titles}` only. Returns deltas `{sources, findings, errors}`. The tool loop is an ephemeral LangChain `create_agent` with `ModelCallLimitMiddleware(run_limit=max_tool_rounds)` (model-call rounds, not per-tool invocations). Tool messages stay inside that agent and are dropped after prune; they never enter parent `messages`.
+**`research_agent`:** parent graph node. Input `{topic, brief, prior_titles, prefs}` only. Returns deltas `{sources, findings, errors}`. The tool loop is an ephemeral LangChain `create_agent` with `ModelCallLimitMiddleware(run_limit=max_tool_rounds)` (model-call rounds, not per-tool invocations). Tool messages stay inside that agent and are dropped after prune; they never enter parent `messages`.
 
 **`Send`:** from `plan_topics` via conditional edge. Do not invoke research workers in a Python loop.
 
@@ -174,7 +174,7 @@ class ExactState(TypedDict):
     clarify_needed: bool  # routing; replace
     clarify_turns: int
     max_clarify_turns: int  # default 3
-    skip_clarify: bool
+    prefs: dict  # user preferences, frozen at the seed; see below
     brief: Optional[ResearchBrief]
     topics: list[Topic]  # replace
     sources: Annotated[list[Source], operator.add]
@@ -194,6 +194,8 @@ class ExactState(TypedDict):
     uncovered: list[str]
 ```
 
+`prefs` is one replace value that the run seed writes. It holds the twelve preferences of §8 under their state names: `language`, `tone`, `length`, `structure`, `source_mix`, `include_domains`, `exclude_domains`, `denylist`, `recency`, `prefer_primary`, `news_bias` and `clarify_mode`. It also holds two derived keys: `start_published_date` (the frozen `YYYY-MM-DD` date, or `null` for `recency=any`) and `effective_exclude_domains` (the user exclude hosts, then the `denylist` preset hosts, each host once). Readers never compute the derived keys again. Scout, clarify, brief, planner, workers and writer read `prefs` from state, never from `Settings`. Each worker gets `prefs` in its `Send` payload. A clarify answer never changes `prefs`. A checkpoint with no `prefs` reads as all defaults. There is no `skip_clarify` channel. Only the CLI resume guard of §8 reads the old `skip_clarify` value of such a checkpoint. The nodes cannot see it, so they read that thread as all defaults, `clarify_mode=auto` included. The two readings differ only for an old `skip_clarify=true` thread that stopped before `decide_clarify` ran. On a resume, that thread can get one clarify question.
+
 Reducers: `add` keys return **deltas**. `topics` / scout / options / `prior_titles` / `prior_queries` / `followups` / `uncovered` / routing flags are replace. Source ids: `src_{topic_id}_{i}`. Nodes write Pydantic models via `.model_dump()` so checkpointed dicts stay valid shapes.
 
 ---
@@ -210,11 +212,27 @@ Reducers: `add` keys return **deltas**. `topics` / scout / options / `prior_titl
 
 `elicit_search` is dormant: the client and its key stay in the tree, but no live path binds the tool.
 
+**Filters.** Four searches send the domain and date filters of `prefs`: the scout web leg, the scout publication leg, `exa_search` and `exa_publication_search`. `exa_people_search` and `exa_company_search` never send a filter. The Exa arguments are `include_domains` (from `prefs.include_domains`), `exclude_domains` (from `prefs.effective_exclude_domains`) and `start_published_date` (from `prefs.start_published_date`). The raw publication request body uses `includeDomains`, `excludeDomains` and `startPublishedDate`. The degraded publication path sends the snake-case names. An empty list and a `null` date leave the key out, so an unfiltered call sends the same arguments as before. No request sends include and exclude together: §8 refuses that combination at startup. Every search requests the resolved `max_hits`. A filter can return fewer hits.
+
+When `recency` is set, Exa drops each page that has no known publish date. That loss is accepted.
+
+The `denylist` presets:
+
+| Preset | Hosts |
+| :--- | :--- |
+| `none` | (none) |
+| `social` | `facebook.com`, `instagram.com`, `tiktok.com`, `x.com`, `twitter.com`, `reddit.com`, `pinterest.com`, `linkedin.com` |
+| `seo` | `quora.com`, `wikihow.com`, `ehow.com`, `answers.com`, `reference.com`, `medium.com`, `hubpages.com`, `ezinearticles.com` |
+
+**Filtered lane gaps.** A lane is filtered when it is `web` or `publication` and `prefs` holds at least one active filter. A search attempt is not necessary. Each gap of a filtered lane ends with a space and `(filters: <names>)`. The names are `include`, `exclude` and `recency`, in that order. A `denylist` preset counts as `exclude`. The suffix applies to `no sources`, `no new sources` and `retrieval failed`, for example `lane web: no sources (filters: exclude, recency)`. An unfiltered lane, and each `people` or `company` lane, keeps its gap text. The trace `tool` line does not name the filters.
+
+**Primary sources.** With `prefer_primary`, `RESEARCH_SYS` gets one line on every lane. The line prefers official and primary sources over secondary roundups. `PRUNE` does not change.
+
 **Tool filter by focus.** A worker binds exactly two tools: the search tool of its topic's `focus`, and `exa_highlights`. The map is `web` → `exa_search`, `people` → `exa_people_search`, `company` → `exa_company_search`, `publication` → `exa_publication_search`. A missing or unrecognized focus reads as `web`. `brief.intent` no longer gates any tool; the lane alone decides. A lane that returns nothing names itself in its gap: `lane <focus>: no sources`.
 
 **Topics.** The planner is the only source of topics on every wave. Each topic is `{query, focus}`. A bare string coerces to `focus="web"`; an unknown focus token degrades that one topic to `web`, records the token, and never fails the whole plan. Unused follow-ups reach the planner through the prompt and come back as topics. If the planner gives no usable topic -- a parse failure, or a plan whose entries are all empty -- the wave researches the unused follow-ups directly, else the brief question, on the fallback lane. Topic identity is the pair `(query, focus)`, so the same question in two lanes is two topics, and a lane repeated inside one wave is planned once. Planner topics also dedup against the waves before this one. The prompt gives the planner `prior` with "do not repeat" and asks for every follow-up back "in its own wording", so a retry reaches the wave rephrased and survives the dedup; a verbatim repeat is the planner disobeying, and the dedup is the guard. A wave whose planner topics all dedup away routes to the writer without an `errors` line. Fallback topics are exempt, because no planner rephrased them; `prior_queries` records what was *attempted*, so a follow-up that repeats a failed lane is a retry, and dropping it would end the wave with nothing.
 
-Scout uses the same HTTP clients, not the tool loop. Scout always runs a general Exa search, and adds an Exa `category=publication` search on an academic signal. No key gates either lane. The two lanes are interleaved before the ids are minted, so a later slice keeps both. Academic signal for scout: query heuristic only (`studies`, `trial`, `paper`, `literature`, `meta-analysis`, `doi`, …) because scout runs before clarify. Academic signal for brief intent: the same heuristic on the query, clarification text, or a picked option label/description.
+Scout uses the same HTTP clients, not the tool loop. Scout always runs a general Exa search. `prefs.source_mix` decides the Exa `category=publication` search: `auto` runs it on an academic signal, `web` never runs it, and `academic` and `mixed` always run it. No key gates either lane. Both legs send the filters and request `max_hits`. A filtered leg that returns no hits appends one `errors` line: `exa scout: no hits (filters: <names>)` or `exa publication scout: no hits (filters: <names>)`. An unfiltered empty leg appends none. A leg that raises keeps only its `<label> scout failed: <exc>` line. The clarify behavior does not change. The two lanes are interleaved before the ids are minted, so a later slice keeps both. Academic signal for scout: query heuristic only (`studies`, `trial`, `paper`, `literature`, `meta-analysis`, `doi`, …) because scout runs before clarify. Academic signal for brief intent: the same heuristic on the query, clarification text, or a picked option label/description.
 
 The planner assigns the lane; it does not shape a topic string for the worker to read. The worker holds one search tool and does not choose a category.
 
@@ -229,7 +247,17 @@ No Firecrawl. No MCP. No Elicit Reports.
 - `needed=false` → brief.
 - `needed=true` → one question that **cites scout titles**; optional 2–4 angles from hits; `interrupt()`.
 
-If `needed=true` and scout hits exist, the question must contain at least one scout title. If it does not, treat as `needed=false`. Do not interrupt on an ungrounded question. Generic “narrow or broaden?” only if scout is empty. Resume `skip` | `pick` | `text`. Invalid → `skip` (proceed to brief). `--skip-clarify` forces `needed=false`.
+If `needed=true` and scout hits exist, the question must contain at least one scout title. If it does not, treat as `needed=false`. Do not interrupt on an ungrounded question. Generic “narrow or broaden?” only if scout is empty. Resume `skip` | `pick` | `text`. Invalid → `skip` (proceed to brief).
+
+`decide_clarify` reads `prefs.clarify_mode`:
+
+- `skip` forces `needed=false` with no router call. `--skip-clarify` is a second name for `--clarify skip`.
+- `auto` keeps the behavior above.
+- `prefer` replaces the `DECIDE_CLARIFY` sentence "Prefer skipping if the query is specific enough." with a sentence that prefers to ask one grounded question.
+
+The scout-title grounding rule, the generic question on an empty scout, and the turn cap apply in every mode.
+
+The `DECIDE_CLARIFY` prompt names each axis that a set preference settles, and tells the model not to ask about it. `source_mix` other than `auto` settles web versus academic. `recency` other than `any` settles the time range. `tone` other than `neutral` settles the audience. The entity axis stays open. When `language` is not `auto`, the prompt tells the model to write the question and the options in that language, and to quote scout titles unchanged, so the grounding check still finds them. With every one of these at its default, the prompt does not change.
 
 `ask_user` and the route after `ask_user` read `max_clarify_turns` from state. Default is `3`.
 
@@ -248,6 +276,12 @@ If `needed=true` and scout hits exist, the question must contain at least one sc
 | `reflect` | router | Forced write if `iteration + 1 >= max_iterations`. Follow-ups go to `followups`. Do not replace `topics`. |
 | `write_report` | write | Temp 0 (1 when thinking is on). Cite existing ids. `## Open questions`. |
 | `audit_citations` | none | Regex `[src_…]`. One bracket may group ids (`[src_a, src_b]`); each is checked on its own. |
+
+**Brief preferences.** `generate_brief` applies `prefs` after `_normalize`, on the model path and on the fallback path. When `source_mix` is `web`, `academic` or `mixed`, `brief.intent` is that value. No signal, model output or clarify answer changes it. With `source_mix=auto`, the academic-signal rule sets `intent`. When `tone` is not `neutral`, `brief.audience` replaces the model value: `academic` gives `academic researchers`, `executive` gives `executives`, and `plain` gives `general public`. `brief.exclusions` gets up to three notes after the model entries: one for the user exclude list, one for the `denylist` preset, and one restriction note for the include list. Each note names its hosts in stored order. A note equal to a model entry appears once. An empty list or `denylist=none` gives no note.
+
+**Lanes by source mix.** In `plan_topics`, `source_mix=web` changes each `publication` topic to `web`, and `source_mix=academic` changes each `web` topic to `publication`. `people` and `company` topics do not change. `auto` and `mixed` change no topic. The change applies to planner topics and fallback topics. It runs after an unknown focus drops to `web`, and before the topic dedup. The unknown-focus line names the final lane: `plan: dropped unknown topic focus '<token>'; used <lane>`. A lane change writes no other `errors` line. When a changed topic and another topic have the same query and lane, the first in planner order survives. The `PLAN` prompt does not change for `source_mix`.
+
+**Search bias.** With `prefer_primary`, `PLAN` gets the line that prefers official and primary sources over secondary roundups. With `news_bias`, `PLAN` gets one line that shapes web-lane queries as news queries with event, outlet and date cues. The news line is the same with or without `recency`. Neither preference changes a filter argument or a cap.
 
 ---
 
@@ -288,9 +322,64 @@ Parent `messages` stay clarify-only. Research tool transcripts are never written
 
 Right after the `thread_id=` line the CLI echoes the resolved caps as `effort=<e> waves=<n> topics=<first>/<followup> rounds=<n> hits=<n> clarify=<n> concurrency=<n>`. Thread-scoped values come from the checkpoint on a resume, else from the seed; process-scoped values always come from the current `Settings`.
 
-A resume compares the effort this run resolved with the `effort` the checkpoint holds. A mismatch exits `1` with `effort mismatch: …`, before the finished-thread check. A checkpoint written without the channel reads as `normal`. Only `effort`, `max_iterations`, `max_clarify_turns` and the two topic caps are thread-scoped; `max_tool_rounds`, `max_hits` and `max_concurrency` are process-scoped and follow the current shell. Output order on start is the `thread_id=` line, then `trace=` when tracing is on, then any trace warning on stderr, then the guard, then the echo line.
+A resume compares the effort this run resolved with the `effort` the checkpoint holds. A mismatch exits `1` with `effort mismatch: …`, before the finished-thread check. A checkpoint written without the channel reads as `normal`. Only `effort`, `max_iterations`, `max_clarify_turns` and the two topic caps are thread-scoped; `max_tool_rounds`, `max_hits` and `max_concurrency` are process-scoped and follow the current shell. Output order on start is the `thread_id=` line, then `trace=` when tracing is on, then any trace warning on stderr, then the effort guard, then the preference guard, then the `effort=` echo line, then the `prefs` echo line, then `run_start`.
 
 `--skip-clarify` for CI. `--thread-id` to resume a thread that waits for an answer. `--trace` and `--verbose` are in §8b.
+
+### Preferences
+
+A preference changes prompts, brief defaults, Exa filter arguments, the lanes that a run searches, and clarify routing. It never raises a cap of the effort profile, never changes the requested hit count, a role model or the temperature, and never adds a vendor. Every bound of §1 holds for every combination.
+
+| Preference | CLI | Env | `Settings` field | Values | Default |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `language` | `--lang` | `EXACT_LANGUAGE` | `exact_language` | `auto`, `en`, `es`, `pt` | `auto` |
+| `tone` | `--tone` | `EXACT_TONE` | `exact_tone` | `neutral`, `academic`, `executive`, `plain` | `neutral` |
+| `length` | `--length` | `EXACT_LENGTH` | `exact_length` | `short`, `standard`, `long` | `standard` |
+| `structure` | `--structure` | `EXACT_STRUCTURE` | `exact_structure` | `report`, `memo`, `bullets` | `report` |
+| `source_mix` | `--sources` | `EXACT_SOURCE_MIX` | `exact_source_mix` | `auto`, `web`, `academic`, `mixed` | `auto` |
+| `include_domains` | `--include-domain` (repeats) | `EXACT_INCLUDE_DOMAINS` | `exact_include_domains` | host list | empty |
+| `exclude_domains` | `--exclude-domain` (repeats) | `EXACT_EXCLUDE_DOMAINS` | `exact_exclude_domains` | host list | empty |
+| `denylist` | `--denylist` | `EXACT_DENYLIST` | `exact_denylist` | `none`, `social`, `seo` | `none` |
+| `recency` | `--since` | `EXACT_RECENCY` | `exact_recency` | `any`, `year`, `month`, `week` | `any` |
+| `prefer_primary` | `--prefer-primary` / `--no-prefer-primary` | `EXACT_PREFER_PRIMARY` | `exact_prefer_primary` | boolean | false |
+| `news_bias` | `--news` / `--no-news` | `EXACT_NEWS_BIAS` | `exact_news_bias` | boolean | false |
+| `clarify_mode` | `--clarify` | `EXACT_CLARIFY_MODE` | `exact_clarify_mode` | `auto`, `skip`, `prefer` | `auto` |
+
+Precedence is flag > environment > default. A domain environment variable is a comma-separated host list: spaces around entries are removed and empty entries are dropped. One use of a domain flag replaces the whole environment list. No flag clears a domain list that the environment sets; `--denylist none` clears a preset. `--skip-clarify` is a second name for `--clarify skip`. Each preference flag also overrides the settings of an injected `Runtime`, and the result passes the same checks. `--effort` is the only flag that does not reach an injected `Runtime`.
+
+`recency` becomes `start_published_date`: the UTC date 365 (`year`), 30 (`month`) or 7 (`week`) days before the instant that the first run seeds the thread. The date is stored in `prefs` and reused on every resume.
+
+**Validation.** `Settings` validators hold the preference checks, so an invalid `Settings` fails wherever it is built. The CLI holds only the `--skip-clarify` conflict check. The checks run before the live-key check. An invalid value exits `1` with one message on stderr. An enum value must match exactly, in lowercase, with no spaces. A domain entry must be a strict ASCII host: two or more dot-separated labels, each `[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?`, and a last label that is not all digits. So a scheme, path, port, wildcard, IP address, single-label name, trailing dot or non-ASCII name is refused. Punycode is accepted, and `www.a.com` and `a.com` are two hosts. Each user domain list holds at most 20 hosts after duplicates are removed; preset hosts do not count. The messages:
+
+```text
+<name> must be one of '<v1>', '<v2>', …; got '<value>' (<flag> or <ENV>)
+<name> must be a boolean such as 0 or 1; got '<value>' (<flag> or <ENV>)
+<name>: '<entry>' is not a host name (<flag> or <ENV>)
+<name> holds <n> hosts; at most 20 (<flag> or <ENV>)
+include domains cannot combine with exclude domains or a denylist (--include-domain, --exclude-domain, --denylist)
+--skip-clarify cannot combine with --clarify <value>
+```
+
+Only the first failure is reported, in this order: effort, then the preferences in table order, then the `--skip-clarify` conflict, then `EXACT_TRACE` and `EXACT_VERBOSE`. The include refusal ranks as `denylist`.
+
+**Resume.** A resume resolves the preferences from flags, environment and defaults, and compares them with the checkpoint `prefs`. Enums and booleans compare by value, domain lists as sorted sets, `denylist` by preset name, and `recency` by enum, not by date. The refusal order is effort mismatch, then preference mismatch, then finished thread. A difference exits `1` with one message on stderr, and writes no trace line:
+
+```text
+preference mismatch: <name> thread=<stored> run=<resolved>; …; rerun with the same preferences or use a new --thread-id
+```
+
+A list value prints comma-joined and a boolean prints `true` or `false`. A resume with `--skip-clarify` of a thread seeded with `clarify_mode=auto` is a mismatch. A checkpoint with no `prefs` reads as all defaults. When that checkpoint holds `skip_clarify=true`, it reads as `clarify_mode=skip`.
+
+**Echo.** Directly after the `effort=` line the CLI prints `prefs=default`, or `prefs` and one `name=value` pair for each preference that is not at its default, in table order, for example `prefs tone=plain exclude_domains=b.com,a.com recency=month`. A list joins its hosts with commas in stored order. The derived keys are not shown. On a resume the values come from the checkpoint.
+
+**Output.** `write_report` puts one fixed line for each of `language`, `tone`, `length` and `structure` into `WRITE`. Every value adds its line, the defaults included, except `tone=neutral`, which adds none. Code holds the exact strings.
+
+- `language`: `auto` tells the writer to use the language of `initial_query`. `en`, `es` and `pt` name English, Spanish and Portuguese. `auto`, `es` and `pt` also tell the writer to write the other headings in that language. Every language keeps the heading `## Open questions` in English. Claims may be translated. Uncited content may not be added.
+- `tone`: `academic` is formal, with precise terms and hedged claims. `executive` leads with conclusions and decisions, with little jargon. `plain` uses short sentences and everyday words, and defines terms.
+- `length`: `short` is 300 to 500 words, `standard` 800 to 1500 words, and `long` 2000 to 3500 words.
+- `structure`: `report` is a cohesive report with sections. `memo` has Summary, Findings and Implications sections, in prose. `bullets` has headed sections whose bodies are bullet lists, with one cited claim for each bullet; the `## Open questions` bullets need no citation.
+
+Every structure keeps the citation rule and ends with `## Open questions`. `length=long` fits the default write cap of 8192 tokens. Under an `EXACT_MAX_TOKENS_WRITE` below 8192, a `long` report can end early. No check compares the two.
 
 If the graph interrupts for clarification, the CLI prints the question and exits. Run the CLI again with the same `--thread-id` to answer. A thread that already reached END cannot be re-run: the CLI exits with `thread already finished; use a new --thread-id`, because `sources`, `findings` and `usage` are append channels that a new seed cannot reset.
 
@@ -326,7 +415,7 @@ trace: cannot write <path>: <reason>
 
 The first refusal applies only to a derived path, when the id holds `/` or `\`, or is `.` or `..`. The second compares both paths after `Path.resolve(strict=False)`. The third covers a parent directory that the CLI cannot create and a file that it cannot open. The CLI creates the parent directory at startup. When the open succeeds, stdout gets `trace=<absolute path>` on the line after `thread_id=`.
 
-The open comes before the effort guard. An `effort mismatch` exit therefore leaves an empty file, or an unchanged file on a resume. It writes no line.
+The open comes before the effort and preference guards. An `effort mismatch` or `preference mismatch` exit therefore leaves an empty file, or an unchanged file on a resume. It writes no line.
 
 ### Resume warnings
 
@@ -380,7 +469,7 @@ A payload that names a topic carries `topic_id` and `wave` together. The emitter
 
 The shapes of `run_start`, `run_end`, `tool` and `report_refs` are **provisional**. They can change before an eval reads them. The envelope is not provisional.
 
-- `run_start.settings` holds the eight keys of the `effort=` echo line (`effort`, `max_iterations`, `max_clarify_turns`, `max_topics_first_wave`, `max_topics_followup`, `max_tool_rounds`, `max_hits`, `max_concurrency`), plus `models` and `max_tokens` (each a map of the four roles), `temperature` and `thinking_budget`. These are the configured values, not the values that thinking writes into a request.
+- `run_start.settings` holds the eight keys of the `effort=` echo line (`effort`, `max_iterations`, `max_clarify_turns`, `max_topics_first_wave`, `max_topics_followup`, `max_tool_rounds`, `max_hits`, `max_concurrency`), plus `models` and `max_tokens` (each a map of the four roles), `temperature` and `thinking_budget`. These are the configured values, not the values that thinking writes into a request. It also holds `prefs`: the full `prefs` dict of §4, the derived keys included, as the `prefs` echo line reads it.
 - **Redaction rule:** the sidecar never holds an API key or any `Settings` field whose name ends in `_api_key`.
 - **Summary-only rule:** the sidecar never holds a snippet body, a highlights body or a vendor JSON blob. A source appears only as a crumb.
 - The sink writes one `decision` per `decide_clarify` chunk and one per `reflect` chunk. `ask_user` and `audit_citations` write no `decision`. `reflect.followups` is `[]` when the node returns none. The key name `continue` is a Python keyword: read it by subscript.

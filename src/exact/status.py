@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from exact.models import JsonMapping
+from exact.prefs import PREF_FIELDS, default_prefs, render_value
 from exact.trace import wave_of
 from exact.usage import tool_counts
 
@@ -37,6 +38,19 @@ def format_effort(snapshot: Mapping[str, Any]) -> str:
         f"clarify={snapshot['max_clarify_turns']} "
         f"concurrency={snapshot['max_concurrency']}"
     )
+
+
+def format_prefs(prefs: Mapping[str, Any]) -> str:
+    """Render the non-default preferences as the run-start echo line."""
+    defaults = default_prefs()
+    pairs = [
+        f"{pref.name}={render_value(prefs.get(pref.name))}"
+        for pref in PREF_FIELDS
+        if prefs.get(pref.name) != defaults[pref.name]
+    ]
+    if not pairs:
+        return "prefs=default"
+    return "prefs " + " ".join(pairs)
 
 
 def format_plan(topics: Sequence[JsonMapping], *, wave: int | None = None) -> list[str]:

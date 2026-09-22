@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from exact import prompts
 from exact.config import Runtime, role_model_id
 from exact.intent import academic_signal
 from exact.models import ExactState, ResearchBrief, focus_label
+from exact.prefs import AUDIENCES, brief_notes, state_prefs
 from exact.usage import StructuredOutputError, invoke_structured
 
 
@@ -72,6 +76,16 @@ def _fallback_brief(query: str, state: ExactState) -> ResearchBrief:
     )
 
 
+def _apply_prefs(brief: ResearchBrief, prefs: Mapping[str, Any]) -> ResearchBrief:
+    """Apply what the preferences fix; no signal or model output overrides it."""
+    if prefs["source_mix"] != "auto":
+        brief.intent = prefs["source_mix"]
+    if prefs["tone"] in AUDIENCES:
+        brief.audience = AUDIENCES[prefs["tone"]]
+    brief.exclusions = list(dict.fromkeys([*brief.exclusions, *brief_notes(prefs)]))
+    return brief
+
+
 def generate_brief(state: ExactState, runtime: Runtime) -> ExactState:
     """Compress query, scout, and chat into the research brief."""
     query = state["initial_query"]
@@ -99,7 +113,9 @@ def generate_brief(state: ExactState, runtime: Runtime) -> ExactState:
         usage = []
         errors = [str(exc)]
     return {
-        "brief": _normalize(brief, query, state).model_dump(),
+        "brief": _apply_prefs(
+            _normalize(brief, query, state), state_prefs(state)
+        ).model_dump(),
         "iteration": 0,
         "errors": errors,
         "usage": usage,

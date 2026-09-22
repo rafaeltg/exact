@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from langchain_core.messages import AIMessage
@@ -16,6 +17,7 @@ from exact.models import (
     ResearchBrief,
     Source,
 )
+from exact.prefs import default_prefs, effective_excludes, start_date
 from exact.trace import NullTracer, Tracer
 
 _SCHEMA_ATTR = {
@@ -231,6 +233,7 @@ class FakeLLM:
         self._structured: dict = {}
         self._local = threading.local()
         self.last_tool_loop_messages: list = []
+        self.last_text_messages: list = []
 
     def begin_tool_session(self) -> None:
         """Reset per-thread tool-round counts for one research worker run."""
@@ -260,6 +263,7 @@ class FakeLLM:
 
     def invoke(self, messages, **_kwargs):
         _require_conversation(messages)
+        self.last_text_messages = list(messages)
         return AIMessage(
             content=self.report, usage_metadata=_usage_meta(self.usage_metadata)
         )
@@ -284,6 +288,7 @@ class FakeExa:
         self.degraded: str | None = None
         self.search_nums: list[int] = []
         self.search_categories: list[str | None] = []
+        self.search_filters: list[dict] = []
         self.highlight_urls: list[str] = []
 
     def _results(self) -> list[Source]:
@@ -294,7 +299,12 @@ class FakeExa:
         return [source()]
 
     def search(
-        self, query: str, num: int = 5, *, category: str | None = None
+        self,
+        query: str,
+        num: int = 5,
+        *,
+        category: str | None = None,
+        filters: dict | None = None,
     ) -> list[Source]:
         self._enter()
         try:
@@ -303,6 +313,7 @@ class FakeExa:
             self._leave()
         self.search_nums.append(num)
         self.search_categories.append(category)
+        self.search_filters.append(dict(filters or {}))
         for key in (query, category):
             if key in self._failing:
                 raise self._failing[key]
@@ -403,10 +414,26 @@ def runtime(
     )
 
 
+# The instant every fake thread is seeded at, so start dates are fixed.
+SEED_INSTANT = datetime(2026, 9, 21, 1, tzinfo=UTC)
+
+
+def seed_prefs(**overrides) -> dict:
+    """A ``prefs`` dict as the CLI seeds it, with the derived keys filled in."""
+    prefs = {**default_prefs(), **overrides}
+    if "effective_exclude_domains" not in overrides:
+        prefs["effective_exclude_domains"] = effective_excludes(
+            prefs["exclude_domains"], prefs["denylist"]
+        )
+    if "start_published_date" not in overrides:
+        prefs["start_published_date"] = start_date(prefs["recency"], SEED_INSTANT)
+    return prefs
+
+
 def graph_seed(**overrides) -> dict:
     seed = {
         "initial_query": "What is X?",
-        "skip_clarify": True,
+        "prefs": seed_prefs(clarify_mode="skip"),
         "effort": "normal",
         "max_iterations": 3,
         "max_clarify_turns": 3,

@@ -3,14 +3,30 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from exact.prefs import (
+    PREF_BY_FIELD,
+    PREF_FIELDS,
+    ClarifyMode,
+    Denylist,
+    Language,
+    Length,
+    Recency,
+    SourceMix,
+    Structure,
+    Tone,
+    effective_excludes,
+    parse_hosts,
+    start_date,
+)
 from exact.trace import NullTracer, Tracer
 
 type Role = Literal["router", "research", "compress", "write"]
@@ -87,6 +103,12 @@ _ROLE_MAX_TOKEN_FIELDS: dict[Role, str] = {
 }
 
 
+_INCLUDE_CONFLICT = (
+    "include domains cannot combine with exclude domains or a denylist "
+    "(--include-domain, --exclude-domain, --denylist)"
+)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -109,11 +131,44 @@ class Settings(BaseSettings):
     exact_trace_path: str = ""
     exact_verbose: bool = False
     exact_effort: Effort = "normal"
+    exact_language: Language = "auto"
+    exact_tone: Tone = "neutral"
+    exact_length: Length = "standard"
+    exact_structure: Structure = "report"
+    exact_source_mix: SourceMix = "auto"
+    exact_include_domains: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    exact_exclude_domains: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Validated even at its default: the include refusal must also fire when
+    # the exclude list, not a preset, is what include meets.
+    exact_denylist: Denylist = Field(default="none", validate_default=True)
+    exact_recency: Recency = "any"
+    exact_prefer_primary: bool = False
+    exact_news_bias: bool = False
+    exact_clarify_mode: ClarifyMode = "auto"
     max_iterations: int = 3
     max_clarify_turns: int = 3
     max_tool_rounds: int = 4
     max_hits: int = 5
     http_timeout: float = 20.0
+
+    @field_validator("exact_include_domains", "exact_exclude_domains", mode="before")
+    @classmethod
+    def _parse_domains(cls, value: Any, info: ValidationInfo) -> list[str]:
+        return parse_hosts(value, PREF_BY_FIELD[str(info.field_name)])
+
+    @field_validator("exact_denylist")
+    @classmethod
+    def _refuse_include_with_excludes(cls, value: str, info: ValidationInfo) -> str:
+        """Refuse an include list beside any exclude list or preset.
+
+        Declaration order puts both domain lists before this field, so
+        ``info.data`` holds them once they validated.
+        """
+        if not info.data.get("exact_include_domains"):
+            return value
+        if info.data.get("exact_exclude_domains") or value != "none":
+            raise ValueError(_INCLUDE_CONFLICT)
+        return value
 
     @model_validator(mode="after")
     def _fill_from_profile(self) -> Settings:
@@ -219,6 +274,19 @@ def effort_snapshot(
     for name in _PROCESS_SCOPED_KNOBS:
         snapshot[name] = getattr(settings, name)
     return snapshot
+
+
+def resolve_prefs(settings: Settings, now: datetime) -> dict[str, Any]:
+    """The run's ``prefs``: each resolved preference plus its derived values."""
+    prefs: dict[str, Any] = {}
+    for pref in PREF_FIELDS:
+        value = getattr(settings, pref.field)
+        prefs[pref.name] = list(value) if isinstance(value, list) else value
+    prefs["start_published_date"] = start_date(settings.exact_recency, now)
+    prefs["effective_exclude_domains"] = effective_excludes(
+        settings.exact_exclude_domains, settings.exact_denylist
+    )
+    return prefs
 
 
 def require_live_keys(settings: Settings) -> None:

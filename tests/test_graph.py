@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -13,6 +14,7 @@ from exact.models import (
     PlanDecision,
     ReflectDecision,
 )
+from exact.nodes.plan import route_research
 from exact.nodes.scout import scout
 from tests.fakes import (
     FakeExa,
@@ -21,6 +23,7 @@ from tests.fakes import (
     graph_seed,
     read_trace,
     runtime,
+    seed_prefs,
     source,
 )
 
@@ -137,7 +140,7 @@ def test_write_runs_once_after_research():
 def test_needed_false_skips_interrupt_and_writes_brief():
     app = build_graph(runtime())
     config = _config("t-not-needed")
-    result = app.invoke(graph_seed(skip_clarify=False), config)
+    result = app.invoke(graph_seed(prefs=seed_prefs()), config)
     assert app.get_state(config).next == ()
     assert result["brief"]["question"] == "What is X?"
     assert result["final_report"]
@@ -166,7 +169,7 @@ def test_skip_clarify_does_not_interrupt_even_if_model_would_ask():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-force-skip")
-    result = app.invoke(graph_seed(skip_clarify=True), config)
+    result = app.invoke(graph_seed(), config)
     assert app.get_state(config).next == ()
     assert result["brief"]["question"] == "What is X?"
 
@@ -181,7 +184,7 @@ def test_clarify_interrupts_when_needed():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-hitl")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     snap = app.get_state(config)
     assert snap.next == ("ask_user",)
 
@@ -196,7 +199,7 @@ def test_same_thread_id_continues_after_interrupt():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-resume")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     result = app.invoke(Command(resume="skip"), config)
     snap = app.get_state(config)
     assert snap.next == ()
@@ -222,7 +225,7 @@ def test_resume_pick_records_the_option():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-pick")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     result = app.invoke(Command(resume="1"), config)
     assert result["user_clarification"]["kind"] == "pick"
     assert result["user_clarification"]["option_ids"] == ["opt_1"]
@@ -239,7 +242,7 @@ def test_invalid_resume_is_skip():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-invalid")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     result = app.invoke(Command(resume={"kind": "bogus"}), config)
     assert result["user_clarification"]["kind"] == "skip"
     assert app.get_state(config).next == ()
@@ -255,7 +258,7 @@ def test_clarify_still_asks_after_two_text_turns():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-two")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     app.invoke(Command(resume="angle one"), config)
     app.invoke(Command(resume="angle two"), config)
     snap = app.get_state(config)
@@ -273,7 +276,7 @@ def test_clarify_proceeds_after_three_turns():
     )
     app = build_graph(runtime(llm=llm))
     config = _config("t-three")
-    app.invoke(graph_seed(skip_clarify=False), config)
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
     app.invoke(Command(resume="angle one"), config)
     app.invoke(Command(resume="angle two"), config)
     result = app.invoke(Command(resume="angle three"), config)
@@ -293,7 +296,7 @@ def test_ask_user_respects_max_clarify_turns():
     )
     app = build_graph(runtime(llm=llm, max_clarify_turns=2))
     config = _config("t-cap-2")
-    app.invoke(graph_seed(skip_clarify=False, max_clarify_turns=2), config)
+    app.invoke(graph_seed(prefs=seed_prefs(), max_clarify_turns=2), config)
     app.invoke(Command(resume="angle one"), config)
     result = app.invoke(Command(resume="angle two"), config)
     snap = app.get_state(config)
@@ -571,3 +574,181 @@ def test_one_trace_file_answers_both_eval_questions(tmp_path):
     assert start["settings"]["thinking_budget"] == 0
     assert sum(f["claims"] for f in _data(lines, "finding")) == 1
     assert _research_crumb_ids(lines, lines[0]["run_id"]) == {"src_t0_1_1"}
+
+
+# ─── User preferences ───────────────────────────────────────────────────
+
+
+def _asking_llm() -> FakeLLM:
+    return FakeLLM(
+        clarify=ClarifyDecision(
+            needed=True,
+            question="Scout found Source A. Focus on mechanisms?",
+            options=[ClarificationOption(id="opt_1", label="Mechanisms")],
+        )
+    )
+
+
+def test_prefs_clarify_mode_skip_makes_no_router_call():
+    llm = _asking_llm()
+    app = build_graph(runtime(llm=llm))
+    config = _config("t-prefs-skip")
+    result = app.invoke(graph_seed(prefs=seed_prefs(clarify_mode="skip")), config)
+    assert app.get_state(config).next == ()
+    assert result["clarify_needed"] is False
+    assert llm.with_structured_output(ClarifyDecision).invocations == 0
+
+
+def test_prefs_state_has_no_skip_clarify_channel():
+    app = build_graph(runtime(llm=_asking_llm()))
+    config = _config("t-prefs-channel")
+    app.invoke(graph_seed(prefs=seed_prefs(), skip_clarify=True), config)
+    snap = app.get_state(config)
+    # A ``skip_clarify`` input is no channel: it neither skips nor persists.
+    assert snap.next == ("ask_user",)
+    assert "skip_clarify" not in snap.values
+
+
+def test_prefs_every_worker_send_payload_holds_prefs():
+    prefs = seed_prefs(tone="plain", exclude_domains=["a.com"])
+    sends = route_research(
+        {
+            "topics": [
+                {"id": "t0_1", "query": "a", "focus": "web"},
+                {"id": "t0_2", "query": "b", "focus": "people"},
+            ],
+            "brief": {"question": "q"},
+            "prefs": prefs,
+        }
+    )
+    assert [send.arg["prefs"] for send in sends] == [prefs, prefs]
+
+
+def test_prefs_nodes_read_state_prefs_not_settings():
+    llm = _asking_llm()
+    app = build_graph(runtime(llm=llm, exact_clarify_mode="skip"))
+    config = _config("t-prefs-state")
+    app.invoke(graph_seed(prefs=seed_prefs()), config)
+    assert app.get_state(config).next == ("ask_user",)
+
+
+def test_prefs_a_clarify_reply_leaves_recency_any():
+    app = build_graph(runtime(llm=_asking_llm()))
+    config = _config("t-prefs-reply")
+    app.invoke(graph_seed(prefs=seed_prefs(), max_clarify_turns=1), config)
+    result = app.invoke(Command(resume="last month"), config)
+    assert result["user_clarification"]["text"] == "last month"
+    assert result["prefs"]["recency"] == "any"
+    assert result["prefs"]["start_published_date"] is None
+
+
+def _run_scouted(exa: FakeExa, query: str = "What is X?", **prefs) -> dict:
+    app = build_graph(runtime(exa=exa))
+    seed = graph_seed(
+        initial_query=query, prefs=seed_prefs(clarify_mode="skip", **prefs)
+    )
+    return app.invoke(seed, _config("t-scout-prefs"))
+
+
+def test_scout_filters_reach_the_web_and_publication_legs():
+    exa = FakeExa()
+    _run_scouted(
+        exa,
+        source_mix="mixed",
+        exclude_domains=["quora.com"],
+        denylist="seo",
+        recency="week",
+    )
+    assert exa.search_categories[:2] == [None, "publication"]
+    for filters in exa.search_filters[:2]:
+        assert filters["exclude_domains"].count("quora.com") == 1
+        assert filters["start_published_date"] == "2026-09-14"
+    assert exa.search_nums[:2] == [5, 5]
+
+
+def test_scout_sources_web_never_runs_the_publication_leg():
+    exa = FakeExa()
+    _run_scouted(exa, "Clinical trials of X?", source_mix="web")
+    assert "publication" not in exa.search_categories
+
+
+def test_scout_sources_academic_runs_the_publication_leg_on_any_query():
+    exa = FakeExa()
+    _run_scouted(exa, "What is X?", source_mix="academic")
+    assert exa.search_categories[:2] == [None, "publication"]
+
+
+def test_scout_filtered_empty_legs_append_a_no_hits_line():
+    result = _run_scouted(
+        FakeExa(hits=[]), source_mix="mixed", exclude_domains=["a.com"]
+    )
+    assert "exa scout: no hits (filters: exclude)" in result["errors"]
+    assert "exa publication scout: no hits (filters: exclude)" in result["errors"]
+    assert result["final_report"]
+
+
+def test_scout_unfiltered_empty_leg_appends_no_line():
+    result = _run_scouted(FakeExa(hits=[]), source_mix="mixed")
+    assert not [e for e in result["errors"] if "no hits" in e]
+
+
+def test_scout_filtered_raising_leg_keeps_only_its_failure_line():
+    exa = FakeExa(failing={None: RuntimeError("boom")})
+    result = _run_scouted(exa, exclude_domains=["a.com"])
+    assert "exa scout failed: boom" in result["errors"]
+    assert not [e for e in result["errors"] if e.startswith("exa scout: no hits")]
+
+
+def _write_prompt(**prefs) -> str:
+    llm = FakeLLM()
+    build_graph(runtime(llm=llm)).invoke(
+        graph_seed(prefs=seed_prefs(clarify_mode="skip", **prefs)),
+        _config("t-write-prefs"),
+    )
+    return llm.last_text_messages[0].content
+
+
+@pytest.mark.parametrize(
+    "name, value, expected",
+    [
+        ("language", "auto", 'Write in the language of the user query "What is X?"'),
+        ("language", "en", "Write in English."),
+        ("language", "es", "Write in Spanish."),
+        ("language", "pt", "Write in Portuguese."),
+        ("length", "short", "Length: 300 to 500 words."),
+        ("length", "standard", "Length: 800 to 1500 words."),
+        ("length", "long", "Length: 2000 to 3500 words."),
+        ("structure", "report", "Structure: a cohesive report with headed sections."),
+        ("structure", "memo", "Summary, Findings and Implications sections"),
+        ("structure", "bullets", "bodies are bullet lists"),
+        ("tone", "academic", "Tone: formal and academic."),
+        ("tone", "executive", "Tone: executive. Lead with conclusions and decisions"),
+        ("tone", "plain", "Tone: plain. Use short sentences and everyday words"),
+    ],
+)
+def test_write_prefs_prompt_holds_each_output_value_string(
+    name: str, value: str, expected: str
+):
+    prompt = _write_prompt(**{name: value})
+    assert expected in prompt
+    assert "Only cite source ids that exist, as [src_...]." in prompt
+    assert "End with ## Open questions listing the gaps." in prompt
+
+
+def test_write_prefs_neutral_tone_adds_no_tone_line():
+    assert "Tone:" not in _write_prompt(tone="neutral")
+
+
+def test_write_prefs_bullets_exempt_open_questions_from_citation():
+    prompt = _write_prompt(structure="bullets")
+    assert "The bullets under ## Open questions need no citation." in prompt
+    assert "The bullets under ## Open questions need no citation." not in (
+        _write_prompt(structure="memo")
+    )
+
+
+@pytest.mark.parametrize("language, name", [("es", "Spanish"), ("pt", "Portuguese")])
+def test_write_prefs_es_and_pt_keep_open_questions_in_english(language, name):
+    prompt = _write_prompt(language=language)
+    assert f"Write the other headings in {name}." in prompt
+    assert "Keep the heading ## Open questions in English, word for word." in prompt

@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from exact import prompts
 from exact.config import Runtime, role_model_id
 from exact.models import ExactState, JsonMapping, focus_label
+from exact.prefs import state_prefs
 from exact.usage import invoke_text
 
 
@@ -63,6 +64,9 @@ def write_report(state: ExactState, runtime: Runtime) -> ExactState:
                     brief=state.get("brief") or {},
                     findings=prompts.findings_block(state.get("findings")),
                     bib=_bib_block(state.get("sources") or []),
+                    style=prompts.write_style(
+                        state_prefs(state), state.get("initial_query") or ""
+                    ),
                 )
             ),
             HumanMessage(content="Write the report."),

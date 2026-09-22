@@ -189,7 +189,8 @@ class ExactState(TypedDict, total=False):
     clarify_needed: bool
     clarify_turns: int
     max_clarify_turns: int
-    skip_clarify: bool
+    # The run's user preferences, frozen when the thread is seeded.
+    prefs: dict
     brief: dict | None
     topics: list[dict]
     sources: Annotated[list[dict], operator.add]
@@ -215,3 +216,4 @@ class ResearchPayload(TypedDict):
     topic: dict
     brief: dict
     prior_titles: list[str]
+    prefs: dict

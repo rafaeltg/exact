@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from itertools import zip_longest
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from exact.config import Runtime
 from exact.intent import academic_signal
 from exact.models import ExactState
+from exact.prefs import exa_filters, filter_suffix, state_prefs
 from exact.tools.exa import ExaClient
 from exact.tools.exa import dump_sources as dump_exa
 from exact.trace import clip_error, crumb
@@ -21,14 +23,37 @@ class _Leg(NamedTuple):
     exc_text: str | None = None
 
 
-def _leg(exa: ExaClient, query: str, num: int, category: str | None, kind: str) -> _Leg:
-    """Run one scout search; a failure becomes an error line, never a raise."""
+def _leg(
+    exa: ExaClient,
+    query: str,
+    num: int,
+    category: str | None,
+    kind: str,
+    filters: Mapping[str, Any],
+) -> _Leg:
+    """Run one scout search; a failure becomes an error line, never a raise.
+
+    A filtered leg that comes back empty says so: the filters, not the query,
+    may be why clarify saw nothing.
+    """
     label = f"exa {category}" if category else "exa"
     try:
-        hits = dump_exa(exa.search(query, num=num, category=category))
+        hits = dump_exa(exa.search(query, num=num, category=category, filters=filters))
     except Exception as exc:  # noqa: BLE001
         return _Leg([], [], [f"{label} scout failed: {exc}"], str(exc))
-    return _Leg(hits, [tool_event(kind, "scout")], [])
+    errors = []
+    if not hits and filters:
+        errors.append(f"{label} scout: no hits{filter_suffix(filters)}")
+    return _Leg(hits, [tool_event(kind, "scout")], errors)
+
+
+def _runs_papers(source_mix: str, query: str) -> bool:
+    """Whether the scout also searches publications under this source mix."""
+    if source_mix == "web":
+        return False
+    if source_mix in ("academic", "mixed"):
+        return True
+    return academic_signal(query)
 
 
 def _scout_tool_event(leg: _Leg, kind: str, query: str) -> dict:
@@ -56,18 +81,21 @@ def _interleave(web: list[dict], papers: list[dict]) -> list[dict]:
 def scout(state: ExactState, runtime: Runtime) -> ExactState:
     """Run the Exa scout before clarify; mint ``src_scout_*`` ids.
 
-    Web always runs. An academic signal adds a publication search. No key
-    gates either lane.
+    Web always runs. ``source_mix`` decides the publication search, and under
+    ``auto`` an academic signal does. No key gates either lane.
     """
     settings = runtime.settings
     query = state["initial_query"]
     exa = runtime.extras.get("exa") or ExaClient(
         settings.exa_api_key, settings.http_timeout
     )
-    academic = academic_signal(query)
-    web = _leg(exa, query, settings.max_hits, None, "exa_search")
+    prefs = state_prefs(state)
+    filters = exa_filters(prefs)
+    num = settings.max_hits
+    academic = _runs_papers(prefs["source_mix"], query)
+    web = _leg(exa, query, num, None, "exa_search", filters)
     papers = (
-        _leg(exa, query, settings.max_hits, "publication", "exa_publication_search")
+        _leg(exa, query, num, "publication", "exa_publication_search", filters)
         if academic
         else _Leg([], [], [])
     )

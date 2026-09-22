@@ -3,11 +3,14 @@ from __future__ import annotations
 import io
 import sqlite3
 import sys
+from datetime import timedelta
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import END, START, StateGraph
 
 from exact.cli import main, thread_config
 from exact.graph import build_graph
@@ -18,7 +21,16 @@ from exact.models import (
     PlanDecision,
     ReflectDecision,
 )
-from tests.fakes import FakeExa, FakeLLM, graph_seed, read_trace, runtime, source
+from tests.fakes import (
+    SEED_INSTANT,
+    FakeExa,
+    FakeLLM,
+    graph_seed,
+    read_trace,
+    runtime,
+    seed_prefs,
+    source,
+)
 
 
 def test_skip_clarify_writes_a_cited_report(capsys):
@@ -298,7 +310,7 @@ def test_a_fresh_thread_id_starts_under_the_resolved_effort(capsys):
 def test_a_checkpoint_without_the_effort_channel_resumes_as_normal(capsys):
     saver = InMemorySaver()
     rt = runtime(llm=_parking_llm())
-    seed = graph_seed(skip_clarify=False)
+    seed = graph_seed(prefs=seed_prefs())
     for key in ("effort", "max_topics_first_wave", "max_topics_followup"):
         del seed[key]
     build_graph(rt, checkpointer=saver).invoke(
@@ -788,6 +800,7 @@ def test_the_settings_snapshot_holds_the_caps_and_the_model_settings(tmp_path):
     )
     settings = _one(path, "run_start")["settings"]
     assert set(settings) == _EFFORT_KEYS | {
+        "prefs",
         "models",
         "max_tokens",
         "temperature",
@@ -917,9 +930,9 @@ _VERBOSE_STATUS = [
 
 
 def _status_lines(out: str) -> list[str]:
-    """The lines between the echo line and the report."""
+    """The lines between the two echo lines and the report."""
     lines = out.splitlines()
-    return lines[2 : lines.index("")]
+    return lines[3 : lines.index("")]
 
 
 def test_a_default_run_prints_the_status_lines_byte_for_byte(capsys):
@@ -990,3 +1003,497 @@ def test_run_start_records_the_resolved_verbose_flag(
     path = tmp_path / "run.jsonl"
     _traced(path, "t-v", *flags)
     assert _one(path, "run_start")["verbose"] is expected
+
+
+# ─── User preferences ───────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "flags, name, raw, field, expected",
+    [
+        (["--lang", "es"], "EXACT_LANGUAGE", "pt", "exact_language", "es"),
+        (["--tone", "plain"], "EXACT_TONE", "academic", "exact_tone", "plain"),
+        (["--length", "short"], "EXACT_LENGTH", "long", "exact_length", "short"),
+        (
+            ["--structure", "memo"],
+            "EXACT_STRUCTURE",
+            "bullets",
+            "exact_structure",
+            "memo",
+        ),
+        (
+            ["--sources", "web"],
+            "EXACT_SOURCE_MIX",
+            "academic",
+            "exact_source_mix",
+            "web",
+        ),
+        (
+            ["--include-domain", "a.com"],
+            "EXACT_INCLUDE_DOMAINS",
+            "b.com",
+            "exact_include_domains",
+            ["a.com"],
+        ),
+        (
+            ["--exclude-domain", "a.com"],
+            "EXACT_EXCLUDE_DOMAINS",
+            "b.com",
+            "exact_exclude_domains",
+            ["a.com"],
+        ),
+        (["--denylist", "seo"], "EXACT_DENYLIST", "social", "exact_denylist", "seo"),
+        (["--since", "week"], "EXACT_RECENCY", "year", "exact_recency", "week"),
+        (
+            ["--prefer-primary"],
+            "EXACT_PREFER_PRIMARY",
+            "0",
+            "exact_prefer_primary",
+            True,
+        ),
+        (["--news"], "EXACT_NEWS_BIAS", "0", "exact_news_bias", True),
+        (
+            ["--clarify", "prefer"],
+            "EXACT_CLARIFY_MODE",
+            "skip",
+            "exact_clarify_mode",
+            "prefer",
+        ),
+    ],
+)
+def test_a_preference_flag_wins_over_its_env(
+    isolated_env, monkeypatch, flags: list[str], name: str, raw: str, field, expected
+):
+    monkeypatch.setenv(name, raw)
+    seen = _record_settings(monkeypatch)
+    main(["What is X?", *flags], checkpointer=InMemorySaver())
+    assert getattr(seen[0], field) == expected
+
+
+def test_a_preference_no_news_flag_overrides_the_news_env(isolated_env, monkeypatch):
+    monkeypatch.setenv("EXACT_NEWS_BIAS", "1")
+    seen = _record_settings(monkeypatch)
+    main(["What is X?", "--skip-clarify", "--no-news"], checkpointer=InMemorySaver())
+    assert seen[0].exact_news_bias is False
+
+
+def test_a_preference_exclude_domain_flag_replaces_the_env_list(
+    isolated_env, monkeypatch
+):
+    monkeypatch.setenv("EXACT_EXCLUDE_DOMAINS", "a.com, b.com")
+    seen = _record_settings(monkeypatch)
+    main(["What is X?", "--skip-clarify"], checkpointer=InMemorySaver())
+    main(
+        ["What is X?", "--skip-clarify", "--exclude-domain", "c.com"],
+        checkpointer=InMemorySaver(),
+    )
+    assert seen[0].exact_exclude_domains == ["a.com", "b.com"]
+    assert seen[1].exact_exclude_domains == ["c.com"]
+
+
+def test_a_preference_skip_clarify_flag_resolves_clarify_mode_skip(
+    isolated_env, monkeypatch
+):
+    seen = _record_settings(monkeypatch)
+    main(["What is X?"], checkpointer=InMemorySaver())
+    main(["What is X?", "--skip-clarify"], checkpointer=InMemorySaver())
+    assert [s.exact_clarify_mode for s in seen] == ["auto", "skip"]
+
+
+_EXCLUDE_SOURCE = "(--exclude-domain or EXACT_EXCLUDE_DOMAINS)"
+_INCLUDE_CONFLICT = (
+    "include domains cannot combine with exclude domains or a denylist "
+    "(--include-domain, --exclude-domain, --denylist)"
+)
+
+
+def _many_hosts(n: int) -> list[str]:
+    return [arg for i in range(n) for arg in ("--exclude-domain", f"h{i}.com")]
+
+
+@pytest.mark.parametrize(
+    "flags, message",
+    [
+        (
+            ["--tone", "Executive"],
+            "tone must be one of 'neutral', 'academic', 'executive', 'plain'; "
+            "got 'Executive' (--tone or EXACT_TONE)",
+        ),
+        (
+            ["--lang", "fr"],
+            "language must be one of 'auto', 'en', 'es', 'pt'; "
+            "got 'fr' (--lang or EXACT_LANGUAGE)",
+        ),
+        (
+            _many_hosts(21),
+            f"exclude_domains holds 21 hosts; at most 20 {_EXCLUDE_SOURCE}",
+        ),
+        *(
+            (
+                ["--exclude-domain", entry],
+                f"exclude_domains: {entry!r} is not a host name {_EXCLUDE_SOURCE}",
+            )
+            for entry in (
+                "https://a.com",
+                "*.a.com",
+                "a.com/blog",
+                "localhost",
+                "a.com.",
+                "münchen.de",
+            )
+        ),
+        (["--include-domain", "a.com", "--exclude-domain", "b.com"], _INCLUDE_CONFLICT),
+        (["--include-domain", "a.com", "--denylist", "social"], _INCLUDE_CONFLICT),
+        (
+            ["--skip-clarify", "--clarify", "prefer"],
+            "--skip-clarify cannot combine with --clarify prefer",
+        ),
+    ],
+)
+def test_an_invalid_preference_exits_with_its_message_before_the_key_check(
+    isolated_env, monkeypatch, flags: list[str], message: str
+):
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        main(["What is X?", *flags], checkpointer=InMemorySaver())
+    assert str(exc.value) == message
+
+
+def test_a_preference_list_of_20_hosts_and_a_punycode_host_are_valid(
+    isolated_env, monkeypatch
+):
+    seen = _record_settings(monkeypatch)
+    flags = [*_many_hosts(19), "--exclude-domain", "xn--mnchen-3ya.de"]
+    main(["What is X?", "--skip-clarify", *flags], checkpointer=InMemorySaver())
+    hosts = seen[0].exact_exclude_domains
+    assert len(hosts) == 20
+    assert hosts[-1] == "xn--mnchen-3ya.de"
+
+
+def test_an_invalid_effort_beside_an_invalid_preference_reports_the_effort(
+    isolated_env, monkeypatch
+):
+    _record_settings(monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        main(
+            ["What is X?", "--effort", "bogus", "--tone", "Executive"],
+            checkpointer=InMemorySaver(),
+        )
+    assert str(exc.value).startswith("effort must be 'normal' or 'max'")
+
+
+def test_an_invalid_preference_beside_an_invalid_trace_env_reports_the_preference(
+    isolated_env, monkeypatch
+):
+    monkeypatch.setenv("EXACT_TRACE", "maybe")
+    _record_settings(monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        main(["What is X?", "--tone", "Executive"], checkpointer=InMemorySaver())
+    assert str(exc.value).startswith("tone must be one of")
+
+
+def test_an_invalid_preference_flag_with_an_injected_runtime_exits(isolated_env):
+    with pytest.raises(SystemExit) as exc:
+        main(
+            ["What is X?", "--tone", "Executive"],
+            runtime=runtime(),
+            checkpointer=InMemorySaver(),
+        )
+    assert str(exc.value).startswith("tone must be one of")
+
+
+def test_preference_flags_reach_an_injected_runtime_but_effort_does_not(capsys):
+    saver = InMemorySaver()
+    rt = runtime()
+    main(
+        ["What is X?", "--tone", "plain", "--skip-clarify", "--effort", "max"],
+        runtime=rt,
+        checkpointer=saver,
+        new_id=lambda: "t-inject",
+    )
+    assert "effort=normal" in capsys.readouterr().out
+    config = thread_config("t-inject", max_concurrency=3)
+    prefs = build_graph(rt, checkpointer=saver).get_state(config).values["prefs"]
+    assert (prefs["tone"], prefs["clarify_mode"]) == ("plain", "skip")
+
+
+# ─── Preference resume guard and echo ───────────────────────────────────
+
+
+def _park(saver, thread: str, *flags: str, rt=None) -> None:
+    """Start a thread that stops at the clarify question."""
+    main(
+        ["What is X?", "--thread-id", thread, *flags],
+        runtime=rt or runtime(llm=_parking_llm()),
+        checkpointer=saver,
+    )
+
+
+def _resume(saver, thread: str, *flags: str, rt=None) -> int:
+    return main(
+        ["What is X?", "--thread-id", thread, *flags],
+        runtime=rt or runtime(llm=_parking_llm()),
+        checkpointer=saver,
+        read_reply=lambda: "skip",
+    )
+
+
+_MISMATCH_TAIL = "rerun with the same preferences or use a new --thread-id"
+
+
+def test_a_resume_with_another_preference_exits_with_the_mismatch_message(
+    tmp_path, capsys
+):
+    path = tmp_path / "run.jsonl"
+    saver = InMemorySaver()
+    rt = runtime(llm=_parking_llm())
+    _traced(path, "t-pm", rt=rt, saver=saver, skip_clarify=False)
+    before = path.read_bytes()
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exc:
+        _traced(
+            path,
+            "t-pm",
+            "--tone",
+            "plain",
+            "--since",
+            "week",
+            rt=rt,
+            saver=saver,
+            skip_clarify=False,
+        )
+    assert str(exc.value) == (
+        "preference mismatch: tone thread=neutral run=plain; "
+        f"recency thread=any run=week; {_MISMATCH_TAIL}"
+    )
+    assert path.read_bytes() == before
+    assert "effort=" not in capsys.readouterr().out
+
+
+def test_a_resume_with_the_same_hosts_in_another_order_continues(capsys):
+    saver = InMemorySaver()
+    _park(saver, "t-hosts", "--exclude-domain", "b.com", "--exclude-domain", "a.com")
+    code = _resume(
+        saver, "t-hosts", "--exclude-domain", "a.com", "--exclude-domain", "b.com"
+    )
+    assert code == 0
+    assert "X is Y [src_t0_1_1]." in capsys.readouterr().out
+
+
+def test_a_resume_with_skip_clarify_of_an_auto_thread_exits(capsys):
+    saver = InMemorySaver()
+    _park(saver, "t-auto")
+    with pytest.raises(SystemExit) as exc:
+        _resume(saver, "t-auto", "--skip-clarify")
+    assert str(exc.value) == (
+        f"preference mismatch: clarify_mode thread=auto run=skip; {_MISMATCH_TAIL}"
+    )
+
+
+def test_a_resume_of_a_thread_without_prefs_uses_default_preferences(capsys):
+    saver = InMemorySaver()
+    rt = runtime(llm=_parking_llm())
+    seed = graph_seed()
+    del seed["prefs"]
+    build_graph(rt, checkpointer=saver).invoke(
+        seed, thread_config("t-noprefs", max_concurrency=3)
+    )
+    capsys.readouterr()
+    assert _resume(saver, "t-noprefs", rt=rt) == 0
+    assert "prefs=default" in capsys.readouterr().out.splitlines()
+
+
+class _LegacyState(TypedDict):
+    initial_query: str
+    effort: str
+    skip_clarify: bool
+
+
+def _write_legacy_thread(saver, thread: str) -> None:
+    """A finished checkpoint whose state still holds the ``skip_clarify`` channel."""
+    graph = StateGraph(_LegacyState)
+    graph.add_node("old", lambda state: {"effort": state["effort"]})
+    graph.add_edge(START, "old")
+    graph.add_edge("old", END)
+    graph.compile(checkpointer=saver).invoke(
+        {"initial_query": "What is X?", "effort": "normal", "skip_clarify": True},
+        thread_config(thread, max_concurrency=3),
+    )
+
+
+def test_a_resume_of_a_legacy_skip_clarify_thread_needs_skip_clarify(capsys):
+    saver = InMemorySaver()
+    _write_legacy_thread(saver, "t-legacy")
+    with pytest.raises(SystemExit) as finished:
+        _resume(saver, "t-legacy", "--skip-clarify")
+    with pytest.raises(SystemExit) as mismatch:
+        _resume(saver, "t-legacy")
+    assert "thread already finished" in str(finished.value)
+    assert str(mismatch.value) == (
+        f"preference mismatch: clarify_mode thread=skip run=auto; {_MISMATCH_TAIL}"
+    )
+
+
+def test_a_resume_with_other_effort_and_preference_reports_the_effort(capsys):
+    saver = InMemorySaver()
+    _park(saver, "t-both")
+    with pytest.raises(SystemExit) as exc:
+        _resume(
+            saver,
+            "t-both",
+            "--tone",
+            "plain",
+            rt=runtime(llm=_parking_llm(), exact_effort="max"),
+        )
+    assert str(exc.value).startswith("effort mismatch")
+
+
+_NORMAL_ECHO = (
+    "effort=normal waves=3 topics=3/2 rounds=4 hits=5 clarify=3 concurrency=3"
+)
+
+
+def _start_lines(capsys, *flags: str) -> list[str]:
+    main(["What is X?", *flags], runtime=runtime(), checkpointer=InMemorySaver())
+    return capsys.readouterr().out.splitlines()
+
+
+def test_the_prefs_line_follows_the_effort_line(capsys):
+    default = _start_lines(capsys)
+    chosen = _start_lines(
+        capsys,
+        "--tone",
+        "plain",
+        "--exclude-domain",
+        "b.com",
+        "--exclude-domain",
+        "a.com",
+    )
+    assert default[1:3] == [_NORMAL_ECHO, "prefs=default"]
+    assert chosen[1:3] == [_NORMAL_ECHO, "prefs tone=plain exclude_domains=b.com,a.com"]
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--lang", "es"],
+        ["--tone", "academic"],
+        ["--length", "long"],
+        ["--structure", "bullets"],
+        ["--sources", "academic"],
+        ["--include-domain", "a.com"],
+        ["--exclude-domain", "a.com"],
+        ["--denylist", "social"],
+        ["--since", "year"],
+        ["--prefer-primary"],
+        ["--news"],
+        ["--clarify", "skip"],
+    ],
+)
+def test_every_preference_leaves_the_effort_line_unchanged(capsys, flags: list[str]):
+    assert _start_lines(capsys)[1] == _NORMAL_ECHO
+    assert _start_lines(capsys, *flags)[1] == _NORMAL_ECHO
+
+
+def test_the_run_start_settings_hold_the_full_prefs_dict(tmp_path):
+    path = tmp_path / "run.jsonl"
+    main(
+        [
+            "What is X?",
+            "--skip-clarify",
+            "--since",
+            "week",
+            "--denylist",
+            "social",
+            "--trace",
+            "--trace-path",
+            str(path),
+        ],
+        runtime=runtime(),
+        checkpointer=InMemorySaver(),
+        now=lambda: SEED_INSTANT,
+    )
+    assert _one(path, "run_start")["settings"]["prefs"] == {
+        "language": "auto",
+        "tone": "neutral",
+        "length": "standard",
+        "structure": "report",
+        "source_mix": "auto",
+        "include_domains": [],
+        "exclude_domains": [],
+        "denylist": "social",
+        "recency": "week",
+        "prefer_primary": False,
+        "news_bias": False,
+        "clarify_mode": "skip",
+        "start_published_date": "2026-09-14",
+        "effective_exclude_domains": [
+            "facebook.com",
+            "instagram.com",
+            "tiktok.com",
+            "x.com",
+            "twitter.com",
+            "reddit.com",
+            "pinterest.com",
+            "linkedin.com",
+        ],
+    }
+
+
+def test_a_resume_echoes_the_checkpoint_prefs_in_stored_order(capsys):
+    saver = InMemorySaver()
+    _park(saver, "t-echo", "--exclude-domain", "b.com", "--exclude-domain", "a.com")
+    capsys.readouterr()
+    _resume(saver, "t-echo", "--exclude-domain", "a.com", "--exclude-domain", "b.com")
+    assert (
+        capsys.readouterr().out.splitlines()[2] == "prefs exclude_domains=b.com,a.com"
+    )
+
+
+def test_a_resume_a_day_later_reuses_the_stored_start_date(capsys):
+    saver = InMemorySaver()
+    exa = FakeExa()
+    rt = runtime(llm=_parking_llm(), exa=exa)
+    day_one = SEED_INSTANT
+    day_two = SEED_INSTANT + timedelta(days=1)
+    main(
+        ["What is X?", "--thread-id", "t-day", "--since", "week"],
+        runtime=rt,
+        checkpointer=saver,
+        now=lambda: day_one,
+    )
+    main(
+        ["What is X?", "--thread-id", "t-day", "--since", "week"],
+        runtime=rt,
+        checkpointer=saver,
+        read_reply=lambda: "skip",
+        now=lambda: day_two,
+    )
+    research = exa.search_filters[1:]
+    assert research
+    assert {f["start_published_date"] for f in research} == {"2026-09-14"}
+
+
+@pytest.mark.parametrize(
+    "name, message",
+    [
+        (
+            "EXACT_PREFER_PRIMARY",
+            "prefer_primary must be a boolean such as 0 or 1; got 'maybe' "
+            "(--prefer-primary or EXACT_PREFER_PRIMARY)",
+        ),
+        (
+            "EXACT_NEWS_BIAS",
+            "news_bias must be a boolean such as 0 or 1; got 'maybe' "
+            "(--news or EXACT_NEWS_BIAS)",
+        ),
+    ],
+)
+def test_an_invalid_boolean_preference_env_exits_with_its_message(
+    isolated_env, monkeypatch, name: str, message: str
+):
+    monkeypatch.setenv(name, "maybe")
+    with pytest.raises(SystemExit) as exc:
+        main(["What is X?"], checkpointer=InMemorySaver())
+    assert str(exc.value) == message
