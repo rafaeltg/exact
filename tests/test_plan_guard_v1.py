@@ -534,3 +534,61 @@ def test_a_table_row_is_not_prose(repo: tuple[Path, str]) -> None:
         encoding="utf-8",
     )
     assert not any("over 25 words" in f for f in guard.strict_audit(plan, root))
+
+
+def test_a_provided_test_resolves_under_a_tests_subdirectory(
+    repo: tuple[Path, str],
+) -> None:
+    """A `TEST=` directory sees a test an earlier task provides inside it."""
+    root, commit = repo
+    (root / "tests/sub").mkdir()
+    (root / "tests/sub/test_existing.py").write_text(
+        "def test_existing() -> None:\n    pass\n", encoding="utf-8"
+    )
+    _git(root, "add", "tests/sub")
+    _git(root, "commit", "-qm", "subdirectory")
+    commit = _git(root, "rev-parse", "HEAD")
+    plan = _plan(root, commit)
+    plan.write_text(
+        plan.read_text(encoding="utf-8")
+        .replace("tests/test_new.py", "tests/sub/test_new.py")
+        .replace("TEST=tests/sub/test_new.py", "TEST=tests/sub"),
+        encoding="utf-8",
+    )
+    assert guard.strict_audit(plan, root) == []
+
+
+def test_a_malformed_files_field_reports_one_defect(repo: tuple[Path, str]) -> None:
+    """A segment that does not parse is one finding, never a repeated kind."""
+    root, commit = repo
+    plan = _plan(root, commit)
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            "create: `tests/test_new.py`", "create `tests/test_new.py`"
+        ),
+        encoding="utf-8",
+    )
+    findings = guard.strict_audit(plan, root)
+    assert any("invalid Files field" in finding for finding in findings)
+    assert not any("kinds must occur once" in finding for finding in findings)
+
+
+def test_a_stale_repository_commit_stops_the_task_pass(
+    repo: tuple[Path, str],
+) -> None:
+    """Every task reference resolves against HEAD, so another commit cascades."""
+    root, base = repo
+    (root / "EXTRA.md").write_text("later\n", encoding="utf-8")
+    _git(root, "add", "EXTRA.md")
+    _git(root, "commit", "-qm", "extra")
+    later = _git(root, "rev-parse", "HEAD")
+    plan = _plan(root, later)
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace("README.md", "EXTRA.md"),
+        encoding="utf-8",
+    )
+    _git(root, "reset", "-q", "--hard", base)
+
+    findings = guard.strict_audit(plan, root)
+
+    assert findings == ["Repository commit does not match HEAD"]

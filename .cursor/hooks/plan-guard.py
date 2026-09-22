@@ -42,6 +42,7 @@ to tell findings from a broken guard, and fails open on anything else.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import re
@@ -157,7 +158,7 @@ def _one_sentence_errors(sentence: str) -> list[str]:
     """Validate one sentence against the length and phrase rules."""
     masked = _CODE_RUN.sub("code", sentence).strip()
     findings: list[str] = []
-    count = _word_count(sentence)
+    count = _word_count(masked)
     if count > MAX_SENTENCE_WORDS:
         findings.append(
             f"sentence is over {MAX_SENTENCE_WORDS} words ({count}): {sentence[:60]}"
@@ -194,6 +195,9 @@ def _repo_root() -> Path:
     return Path(root).resolve() if root else Path(__file__).resolve().parents[2]
 
 
+# The task pass resolves every path, Make target and test name against HEAD.
+# `strict_audit` stops before it when the plan records another commit.
+_STALE_BASELINE = "Repository commit does not match HEAD"
 _V1_MARKER = ".spec-plan-v1"
 _CHECK_STAMP = ".plan-checked"
 _SAFE_PATH = re.compile(r"^[^/\s:]+(?:/[^/\s:]+)*$")
@@ -574,17 +578,19 @@ def _strict_file_refs(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
     """Parse the canonical Files field."""
     refs: list[tuple[str, str]] = []
     errors: list[str] = []
+    kinds: list[str] = []
     for segment in raw.split(" | "):
         match = re.fullmatch(r"(create|modify): ((?:`[^`]+`)(?:, `[^`]+`)*)", segment)
         if match is None:
             errors.append(f"invalid Files field: {raw}")
             continue
         kind = match.group(1)
+        kinds.append(kind)
         for path in re.findall(r"`([^`]+)`", match.group(2)):
             if not _safe_strict_path(path):
                 errors.append(f"unsafe Files path: {path}")
             refs.append((kind, path))
-    if len({kind for kind, _ in refs}) != len(raw.split(" | ")):
+    if len(set(kinds)) != len(kinds):
         errors.append("Files kinds must occur once")
     if len({path for _, path in refs}) != len(refs):
         errors.append("Files paths must be unique")
@@ -610,6 +616,7 @@ def _strict_provides(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
         return [], []
     refs: list[tuple[str, str]] = []
     errors: list[str] = []
+    kinds: list[str] = []
     for segment in raw.split(" | "):
         match = re.fullmatch(
             r"(test|make-target): ((?:`[^`]+`)(?:, `[^`]+`)*)", segment
@@ -618,11 +625,12 @@ def _strict_provides(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
             errors.append(f"invalid Provides field: {raw}")
             continue
         kind = match.group(1)
+        kinds.append(kind)
         for value in re.findall(r"`([^`]+)`", match.group(2)):
             if not _provided_value_valid(kind, value):
                 errors.append(f"invalid provided {kind}: {value}")
             refs.append((kind, value))
-    if len({kind for kind, _ in refs}) != len(raw.split(" | ")):
+    if len(set(kinds)) != len(kinds):
         errors.append("Provides kinds must occur once")
     return refs, errors
 
@@ -711,11 +719,20 @@ def _strict_spec_facts(root: Path, spec_path: str) -> SpecFacts:
     )
 
 
+# Memoized: the baseline commit is fixed for one gate run, and a plan asks
+# for the same path and the same test directory once per task. Without this
+# a twenty-task plan spends seconds re-reading one tree out of Git.
+#
+# Two conditions the cache needs: the guard is one process per run, and no
+# caller writes to the set it gets back. A caller that mutated it, or a second
+# audit of one root across a new commit, would read a stale answer.
+@functools.cache
 def _strict_git_path(root: Path, path: str) -> bool:
     """Return whether a path exists in the recorded commit."""
     return _git_text(root, ["cat-file", "-e", f"HEAD:{path}"]) is not None
 
 
+@functools.cache
 def _strict_test_names(root: Path, path: str) -> set[str]:
     """Collect statically declared test names from the baseline tree."""
     files = [path]
@@ -759,17 +776,14 @@ def _verify_key_error(task: StrictTask, key: str | None, test: str | None) -> li
     return []
 
 
-def _selector_known(
-    path: str, selector: str, names: set[str], providers: dict[str, set[str]]
-) -> bool:
-    """Return whether a test selector resolves."""
-    provided = {
-        value
-        for value in providers["test"]
-        if value.rsplit("::", 1)[-1] == selector
-        and (value.partition("::")[0] == path or path == "tests")
-    }
-    return not selector or selector in names or bool(provided)
+def _under_test_path(value: str, path: str) -> bool:
+    """Return whether one provided test node id lies under a TEST path.
+
+    The separator keeps the prefix honest: `tests/test_ab.py` is not under
+    `tests/test_a`, and a bare `startswith` would say it is.
+    """
+    owner = value.partition("::")[0]
+    return owner == path or owner.startswith(f"{path}/")
 
 
 def _provided_names(path: str, providers: dict[str, set[str]]) -> set[str]:
@@ -777,9 +791,15 @@ def _provided_names(path: str, providers: dict[str, set[str]]) -> set[str]:
     return {
         value.rsplit("::", 1)[-1]
         for value in providers["test"]
-        if value.partition("::")[0] == path
-        or (path == "tests" and value.startswith("tests/"))
+        if _under_test_path(value, path)
     }
+
+
+def _selector_known(
+    path: str, selector: str, names: set[str], providers: dict[str, set[str]]
+) -> bool:
+    """Return whether a test selector resolves."""
+    return not selector or selector in names | _provided_names(path, providers)
 
 
 def _key_known(
@@ -808,7 +828,7 @@ def _verify_test_path(
     ):
         return [f"task {task.number}: TEST must be under tests/"]
     baseline = _strict_git_path(root, path)
-    known_path = baseline or path in providers["test-path"]
+    known_path = baseline or bool(_provided_names(path, providers))
     if not known_path:
         return [f"task {task.number}: TEST path does not exist: {path}"]
     names = _strict_test_names(root, path) if baseline else set()
@@ -930,9 +950,6 @@ def _update_providers(
         if value in updated[bucket]:
             findings.append(f"task {task.number}: duplicate provided {kind}: {value}")
         updated[bucket].add(value)
-        if kind == "test":
-            updated["test-name"].add(value.rsplit("::", 1)[-1])
-            updated["test-path"].add(value.split("::", 1)[0])
     updated["path"].update(path for kind, path in refs if kind == "create")
     return updated, findings
 
@@ -1016,7 +1033,7 @@ def _strict_spec_errors(root: Path, parsed: StrictPlan) -> tuple[SpecFacts, list
         findings.append("specification digest does not match")
     head = _git_text(root, ["rev-parse", "HEAD"])
     if head != parsed.metadata["Repository commit"]:
-        findings.append("Repository commit does not match HEAD")
+        findings.append(_STALE_BASELINE)
     if not _strict_git_path(root, spec_path):
         findings.append("specification is not tracked")
     try:
@@ -1073,7 +1090,7 @@ def _review_status_errors(lines: list[str]) -> list[str]:
 def _review_blocking_errors(rows: list[str]) -> list[str]:
     """Reject blocking rows in an approved review artifact."""
     return [
-        "review contains a blocking finding"
+        f"review contains a blocking finding: {row}"
         for row in rows
         if row.endswith(" → blocking")
     ]
@@ -1103,8 +1120,8 @@ def _strict_review_errors(plan: Path) -> list[str]:
 
 def _strict_task_errors(root: Path, parsed: StrictPlan, facts: SpecFacts) -> list[str]:
     """Validate every task in order."""
-    providers = {
-        key: set() for key in ("path", "test", "test-name", "test-path", "make-target")
+    providers: dict[str, set[str]] = {
+        key: set() for key in ("path", "test", "make-target")
     }
     targets = _strict_targets(root)
     findings: list[str] = []
@@ -1131,6 +1148,8 @@ def strict_audit(plan: Path, root: Path) -> list[str]:
     facts, spec_errors = _strict_spec_errors(root, parsed)
     findings.extend(spec_errors)
     findings.extend(_strict_review_errors(plan))
+    if _STALE_BASELINE in spec_errors:
+        return findings
     return findings + _strict_task_errors(root, parsed, facts)
 
 
