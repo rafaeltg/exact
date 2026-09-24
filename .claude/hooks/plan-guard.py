@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`.cursor/hooks/plan-guard.py` — gate one canonical `/plan` artifact.
+"""`.claude/hooks/plan-guard.py` — gate one canonical `/plan` artifact.
 
 A plan that names a file, a test or a `make` target that does not exist ships a
 bug no gate catches: the executor follows the plan and the command fails. A

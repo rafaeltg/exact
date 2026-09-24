@@ -8,7 +8,9 @@ description: >
   rather than whole files and reports conclusions, not file dumps. It documents
   code as it exists; it never reviews, audits, or critiques it. Specify search
   breadth: "medium" for moderate exploration, "very thorough" for multiple
-  locations and naming conventions.
+  locations and naming conventions. For a convention that repeats across the
+  codebase, with verbatim examples and usage counts, use
+  codebase-pattern-finder instead.
 model: sonnet
 effort: medium
 disallowedTools: Edit, Write, NotebookEdit, Artifact

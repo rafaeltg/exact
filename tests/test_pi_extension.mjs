@@ -41,7 +41,7 @@ function commitMessage() {
 
 function pullRequestMessage() {
   return [
-    'gh pr create --title "Add the GitHub workflow commands" --body "$(cat <<\'EOF\'',
+    'scripts/gh-exact pr create --title "Add the GitHub workflow commands" --body "$(cat <<\'EOF\'',
     "## Description",
     "Expose the repository workflows in Pi.",
     "",
@@ -107,8 +107,6 @@ test("test_commit_allowlist_accepts_source_patterns", () => {
     "git reset HEAD",
     commitMessage(),
     "git log --oneline",
-    'gh auth switch -u "$EXACT_GITHUB_USER"',
-    "gh api user --jq .login",
   ]
 
   for (const command of commands) {
@@ -120,17 +118,17 @@ test("test_create_pr_allowlist_accepts_source_patterns", () => {
   const commands = [
     "git branch --show-current",
     "git log --oneline",
+    "git log -n 10 --oneline",
     "git log --oneline $(git merge-base HEAD origin/$DEFAULT_BRANCH)..HEAD",
     "git diff --stat $(git merge-base HEAD origin/$DEFAULT_BRANCH)..HEAD",
     "git diff --stat HEAD~10",
     "git status --short",
+    "git status -sb",
     "git merge-base HEAD origin/main",
     "git rev-parse --abbrev-ref @{upstream} 2>/dev/null",
     "git push -u origin $BRANCH",
     "git push",
-    "gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'",
-    'gh auth switch -u "$EXACT_GITHUB_USER"',
-    "gh api user --jq .login",
+    "scripts/gh-exact repo view --json defaultBranchRef --jq '.defaultBranchRef.name'",
     pullRequestMessage(),
   ]
 
@@ -139,14 +137,42 @@ test("test_create_pr_allowlist_accepts_source_patterns", () => {
   }
 })
 
-test("test_restoration_wrappers_are_allowed", () => {
-  const record = "ORIGINAL_GH_USER=$(gh api user --jq .login 2>/dev/null)"
-  const restore = '[ -n "$ORIGINAL_GH_USER" ] && gh auth switch -u "$ORIGINAL_GH_USER"'
+test("test_global_account_switch_is_blocked", () => {
+  const commands = [
+    'gh auth switch -u "$EXACT_GITHUB_USER"',
+    "gh api user --jq .login",
+    "ORIGINAL_GH_USER=$(gh api user --jq .login 2>/dev/null)",
+    '[ -n "$ORIGINAL_GH_USER" ] && gh auth switch -u "$ORIGINAL_GH_USER"',
+  ]
 
-  assert.equal(isAllowedWorkflowCommand("commit", record), true)
-  assert.equal(isAllowedWorkflowCommand("create-pr", record), true)
-  assert.equal(isAllowedWorkflowCommand("commit", restore), true)
-  assert.equal(isAllowedWorkflowCommand("create-pr", restore), true)
+  for (const command of commands) {
+    assert.equal(isAllowedWorkflowCommand("commit", command), false, command)
+    assert.equal(isAllowedWorkflowCommand("create-pr", command), false, command)
+  }
+})
+
+test("test_create_pr_blocks_bare_gh", () => {
+  const commands = [
+    "gh pr view",
+    "gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'",
+    pullRequestMessage().replace("scripts/gh-exact pr create", "gh pr create"),
+  ]
+
+  for (const command of commands) {
+    assert.equal(isAllowedWorkflowCommand("create-pr", command), false, command)
+  }
+})
+
+test("test_commit_blocks_every_gh_call", () => {
+  const commands = [
+    "gh pr view",
+    "scripts/gh-exact repo view --json defaultBranchRef --jq '.defaultBranchRef.name'",
+    pullRequestMessage(),
+  ]
+
+  for (const command of commands) {
+    assert.equal(isAllowedWorkflowCommand("commit", command), false, command)
+  }
 })
 
 test("test_unauthorized_tool_and_command_are_blocked", () => {
@@ -191,7 +217,7 @@ test("test_heredoc_injection_is_blocked", () => {
     "EOF",
   ].join("\n")
   const injectedPullRequest = [
-    'gh pr create --title "Safe title" --body "$(cat <<\'EOF\'',
+    'scripts/gh-exact pr create --title "Safe title" --body "$(cat <<\'EOF\'',
     "$(rm -rf .)",
     "EOF",
     ')" --assignee "$EXACT_GITHUB_USER"',

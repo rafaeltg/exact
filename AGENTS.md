@@ -1,44 +1,24 @@
 # exact
 
-CLI Open Deep Research agent on LangGraph. Tools are **Exa** only; the Elicit client is dormant. Clarification is grounded in an Exa scout. Contract: [docs/spec.md](docs/spec.md) v1.4. Architecture: [docs/architecture.md](docs/architecture.md).
+CLI Open Deep Research agent on LangGraph. Retrieval is **Exa** only; the Elicit client is dormant. Contract: [docs/spec.md](docs/spec.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
 ## Commands
 
 ```
-make setup              # uv sync --extra dev + install-hooks
-make test               # TEST=path K=expr VERBOSE=1
-make lint / lint-fix
-make format / format-fix   # FILE=path for one file
-make complexity-check
+make test               # TEST=path[::name] K=expr VERBOSE=1
+make lint-fix           # FILE=path for one file
 make complexity-report FILE=path  # budget headroom of each function
-make imports-check       # fail on any import cycle inside exact
-make spec-check FILE=path  # validate one docs/specs/ specification
-make spec-check-ready FILE=path  # require a committed Ready specification
-make spec-check-index FILE=path  # validate staged specification bytes
-make spec-check-all       # validate all tracked docs/specs/ specifications
-make plan-check FILE=path  # validate a canonical .claude/artifacts/plan/ plan
-make plan-init TOPIC=slug  # gate /plan inputs and print the plan metadata
-make workflows-check    # syntax-check .claude/workflows/*.js
-make check              # lint + format + specs + complexity + imports + workflows + pi + tests
-make clean
+make check              # the full gate; `make help` lists every target
 ```
 
-Install hooks once after clone (`make setup` or `make install-hooks`). Commits then run `make lint-fix` (with re-stage), `make spec-check-index` over every tracked
-specification, `make complexity-check` and `make imports-check`. Do not skip hooks.
+## Hooks
 
-`make check` reads the worktree; the commit gate reads the index. Stage a specification fix before
-you commit, or the commit gate still sees the committed bytes.
-
-Editor: Python format + lint-fix on save via the Ruff extension (`.vscode/settings.json`). Agent `Write`/`StrReplace` hit `make complexity-pre` first (deny before disk). After an allowed write, `afterFileEdit` runs `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. `TabWrite` gets `make complexity-post` via `postToolUse`. After a `Bash` call,
-`scripts/hooks/post-bash.sh` runs the complexity gate, the specification gate on a changed
-`docs/specs/` file, and the plan gate on a plan the workflow opened. A shell write therefore
-reaches the same gates a `Write` reaches.
+- Claude Code only: after a write to a `.py` file, a hook runs `make lint-fix` on it. The file can change.
+- The commit gate checks the staged bytes of a specification. Stage a specification fix before you commit. The complexity gate takes its file list from the index, but it reads each file from the worktree. Do not skip hooks.
 
 ## Bounds (do not loosen)
 
-- Ceilings are the `max` profile: clarify turns ≤ 3; research waves ≤ 4; topics/wave ≤ 4 (follow-up ≤ 3); tool rounds/worker ≤ 6; hits/call ≤ 8. A default run is `normal`: 3; 3; 3 (2); 4; 5
-- `EXACT_TEMPERATURE` default 0. Anthropic thinking: `EXACT_THINKING_BUDGET` (default `0` = off)
-- Per-role models and max tokens via `EXACT_MODEL_*` / `EXACT_MAX_TOKENS_*`; empty model inherits `EXACT_MODEL`
+- The `max` profile in `src/exact/config.py` is the ceiling. A default run is `normal`.
 - CLI + SQLite checkpointer. No HTTP API, web UI, or extra retrieval vendors
 - Out of scope: Firecrawl, MCP product, Elicit Reports, `create_supervisor`, parallel writers, PDF/paywall full text
 
@@ -56,13 +36,12 @@ If you change topology, bounds, tools, or citation rules, update `docs/spec.md` 
 
 - Python 3.12+, `src/exact` layout, `from __future__ import annotations`
 - Inject `Runtime` (settings + llm + `extras` for clients). Tests use `tests/fakes.py` — no live network in pytest
-- Ruff is lint + format. Match existing style: double quotes, 88 columns, isort with `exact` first-party
 - Broad `except Exception` is allowed only at vendor/tool boundaries (`# noqa: BLE001`)
 - Do not invent sources. Gaps go in `uncovered` / `Finding.gaps`, not in claims
 
 ## Complexity budgets
 
-`.cursor/hooks/complexity-guard.py` owns the numbers. Do not restate them here. Tests, `alembic/`, and `scripts/dev/` are exempt. `make complexity-pre` denies a new or worse breach vs HEAD before the write lands. Ruff stays post-edit (`make lint-fix FILE=`). Commits run `make complexity-check`. The tree must have no over-budget functions. Do not park a breach.
+`.claude/hooks/complexity-guard.py` owns the numbers. Tests are exempt. In Claude Code, a `Write`/`Edit` with a new or worse breach vs HEAD is denied before it reaches disk. The tree must have no over-budget functions. Do not park a breach.
 
 Repair an over-budget function in this order. Stop at the first repair that works.
 
@@ -73,20 +52,6 @@ Repair an over-budget function in this order. Stop at the first repair that work
 
 Do not add a boolean parameter to merge two behaviours. Do not pass a bag of state to beat the parameter budget. Do not split a function into two halves that share most of their locals.
 
-```
-make complexity-check
-```
-
 ## Done when
 
-`make check` is clean (lint + format-check + complexity + imports + tests).
-
-## MANDATORY rules
-
-- Don't assume. Don't hide confusion. Surface tradeoffs.
-- Minimum code that solves the problem. Nothing speculative.
-- Touch only what you must. Clean up only your own mess.
-- Define success criteria. Loop until verified.
-- When writing plans or documentation use ASD-STE100 Simplified Technical English.
-- When making technical decisions, do not give much weight to development cost. Instead, prefer quality, simplicity, robustness, scalability and long term maintainability.
-- Review substantial changes you authored with a **fresh reviewer** (fresh context / subagent), not by re-reading in the same working context — in-context self-review under-catches wrong assumptions.
+`make check` is clean.

@@ -41,7 +41,7 @@ pythonpath = ["src", "."]
 [tool.ruff]
 target-version = "py312"
 line-length = 88
-src = ["src", "tests", ".cursor/hooks"]
+src = ["src", "tests", ".claude/hooks"]
 
 [tool.ruff.lint]
 select = [

@@ -21,7 +21,7 @@ owns what a task and a `Verify` look like. This command owns the gates, the outp
 the review. **Never re-explain a skill's method here.** The output shape below is the one copy of
 the document format. Load each skill at the phase that needs it.
 
-`.cursor/hooks/plan-guard.py` owns the validation rules. `make plan-check` is authoritative. The
+`.claude/hooks/plan-guard.py` owns the validation rules. `make plan-check` is authoritative. The
 lists below help you write; they never replace a run of the gate.
 
 ## Phase 0 — Gate the inputs
@@ -60,8 +60,10 @@ lists below help you write; they never replace a run of the gate.
 
 ## Phase 4 — Write the plan
 
-Write only `.claude/artifacts/plan/$1/plan.md`, and write it with `Write` or `Edit` only. **A
-Bash write skips the gate hook.** Write in ASD-STE100 Simplified Technical English (`AGENTS.md`).
+Write only `.claude/artifacts/plan/$1/plan.md`, and write it with `Write` or `Edit` only. **The
+gate hook checks every `Write` and `Edit`, but it can miss a Bash write.** It checks a shell write
+only when the `.spec-plan-v1` marker and the `.plan-checked` stamp exist. It also misses a shell
+write in the same clock second as the last check. Write in ASD-STE100 Simplified Technical English (`CONTRIBUTING.md` §7).
 The gate limits a sentence to 25 words. Keep an instruction to 20.
 
 The metadata block is the five lines `make plan-init` printed. Copy them verbatim. Do not

@@ -45,7 +45,7 @@ async def process_refund(order: Order, reason: str) -> RefundResult:
     )
 ```
 
-**Long function** -- the enforced cap is 40 code lines (`.cursor/hooks/complexity-guard.py` owns the number). Well before that cap, ask: "Can I name the blocks?" If you can describe what lines 1-10 do separately from lines 11-20, those are separate functions.
+**Long function** -- the enforced cap is 40 code lines (`.claude/hooks/complexity-guard.py` owns the number). Well before that cap, ask: "Can I name the blocks?" If you can describe what lines 1-10 do separately from lines 11-20, those are separate functions.
 
 ### The newspaper metaphor
 
@@ -80,7 +80,7 @@ The fewer arguments a function takes, the easier it is to understand, test, and 
 - **0 arguments (niladic):** Ideal. `get_current_time()`, `create_empty_cart()`
 - **1 argument (monadic):** Common and clear. `validate_email(email)`, `parse_config(path)`
 - **2 arguments (dyadic):** Acceptable. `create_user(name, email)` -- the call-site order carries no hint
-- **3+ arguments (triadic):** A design prompt, not a breach. The enforced cap is 6 (`.cursor/hooks/complexity-guard.py` owns the number). Either the function does too much, or the arguments group into a parameter object
+- **3+ arguments (triadic):** A design prompt, not a breach. The enforced cap is 6 (`.claude/hooks/complexity-guard.py` owns the number). Either the function does too much, or the arguments group into a parameter object
 
 The fix is the Introduce Parameter Object refactoring -- see `design-heuristics.md` § Introduce Parameter Object for the before/after, and `SKILL.md` § Known breach shapes row 1 for the shape this repo has already hit.
 

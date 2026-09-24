@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/hooks/post-edit.sh — afterFileEdit adapter: stdin JSON → make lint-fix FILE=.
+# scripts/hooks/post-edit.sh — PostToolUse(Write|Edit) adapter: stdin JSON → make lint-fix FILE=.
 #
-# Cursor (and Claude) hooks only get a static command string. The edited path
+# Claude Code hooks only get a static command string. The edited path
 # arrives in the stdin payload, so this thin shell bridges payload → Make.
 # Same shape as pipeline-engine's post-edit.sh, scoped to Python only.
 #
@@ -19,8 +19,8 @@ proj="${proj%/}"
 command -v jq >/dev/null 2>&1 || exit 0
 command -v make >/dev/null 2>&1 || exit 0
 
-# Cursor afterFileEdit: file_path (top-level or tool_input).
-# Claude / serena: tool_input.file_path or tool_input.relative_path.
+# Claude Code: tool_input.file_path. serena: tool_input.relative_path.
+# `post-bash.sh` sends tool_input.file_path. The other keys are fallbacks.
 f="$(printf '%s' "$input" | jq -r '
   .file_path
   // .tool_input.file_path

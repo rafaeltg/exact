@@ -6,7 +6,7 @@ description: >-
   and a checkable defect: .claude/artifacts/bug-bash/*, .claude/artifacts/review-pr/* dry-run
   reports, or pasted audit output. Not for: producing findings (/bug-bash, /review-pr);
   arguments that an idea is unsound (harden-doc); forensic-review reports (its own Phase 7);
-  brainstorm reports; GitHub PR review comments, even when pasted (/resolve-pr); asking whether
+  brainstorm reports; GitHub PR review comments, even when pasted (/babysit-pr); asking whether
   findings are valid (/forensic-review).
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(date*), Bash(mkdir*), Bash(git status*), Bash(git diff*), Bash(git merge-base*), Bash(make test*), Bash(make workflows-check*), Bash(rtk proxy make*)
 ---
@@ -96,7 +96,7 @@ executes the defects and returns the judgment calls to the user.
      | Touched path | Gate |
      | --- | --- |
      | `src/exact/**/*.py`, `tests/**` | `rtk proxy make test TEST=<the test file the item names>` per item; `rtk proxy make check` once after the last item |
-     | `.cursor/hooks/*.py` | `rtk proxy make test TEST=tests/test_complexity_guard.py` per item; `rtk proxy make check` once after the last item (lint, format and complexity cover this path) |
+     | `.claude/hooks/*.py` | `rtk proxy make test TEST=tests/test_complexity_guard.py` per item; `rtk proxy make check` once after the last item (lint, format and complexity cover this path) |
      | `.claude/workflows/*.js` | `make workflows-check` — if it prints `WARNING: node not on PATH`, report the gate as not run, never as passed |
      | anything else (`docs/**`, `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `.claude/**/*.md`, `Makefile`, `pyproject.toml`, `scripts/**`, config files) | "no gate covers this file" |
 

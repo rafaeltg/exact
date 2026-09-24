@@ -78,14 +78,11 @@ def test_pi_github_workflow_prompts_cover_source_stages() -> None:
     create_pr = (ROOT / ".pi/prompts/create-pr.md").read_text(encoding="utf-8")
 
     for marker in (
-        "EXACT_GITHUB_USER",
         "git status",
         "git reset HEAD",
         "git diff",
         "git add",
         "git commit",
-        "gh auth switch",
-        "ORIGINAL_GH_USER",
         "final status",
     ):
         assert marker in commit
@@ -95,11 +92,19 @@ def test_pi_github_workflow_prompts_cover_source_stages() -> None:
         "git branch --show-current",
         "git status --short",
         "git push",
-        "gh pr create",
-        "ORIGINAL_GH_USER",
+        "scripts/gh-exact repo view",
+        "scripts/gh-exact pr create",
         "PR URL",
     ):
         assert marker in create_pr
+
+
+def test_pi_github_workflow_prompts_never_switch_the_global_account() -> None:
+    """Neither workflow switches or restores the global `gh` account."""
+    for name in ("commit", "create-pr"):
+        prompt = (ROOT / f".pi/prompts/{name}.md").read_text(encoding="utf-8")
+        assert "gh auth switch" not in prompt
+        assert "ORIGINAL_GH_USER" not in prompt
 
 
 def test_pi_github_workflow_extension_requires_explicit_invocation() -> None:

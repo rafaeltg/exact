@@ -1,7 +1,7 @@
 ---
 description: Forensic multi-agent bug bash on a file, directory, or project — writes a severity-sorted report with proposed fixes
 argument-hint: "[path]  (default: repo root)"
-allowed-tools: Workflow, Read, Glob, Grep, Write, Bash(git*), Bash(date*), Bash(mkdir*)
+allowed-tools: Workflow, Read, Glob, Grep, Write, Bash(git rev-parse*), Bash(git -C * rev-parse*), Bash(git -C * check-ignore*), Bash(git -C * log*), Bash(jq*), Bash(date*), Bash(mkdir*)
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,8 @@ report). You verify the survivors' citations, write the report file, and print a
 summary — the full report is NEVER printed to the terminal.
 
 Run the pipeline autonomously — no mid-run user interaction. Read-only except the final
-report under `.claude/artifacts/bug-bash/` and a scratchpad sidecar holding the file inventory. Never
+report under `.claude/artifacts/bug-bash/`, a scratchpad sidecar holding the file inventory, the
+`check-ignore` path list, and the scratchpad file for the payload measurement in Phase 2. Never
 modify code, run tests/lint/build, commit, or push.
 
 ## Severity Definitions
@@ -104,7 +105,22 @@ and `args`:
 
 Pass arrays as real JSON arrays, not strings. `inventoryPath` carries the scan list — never an
 `inventory` array; the agents Read it. `recentChurn` and `contextFiles` stay inline because
-Phase 1 caps the two lists to a combined budget of 2,500 serialized bytes. The workflow returns
+Phase 1 caps the two lists to a combined budget of 2,500 serialized bytes.
+
+**Measure the payload before you invoke `Workflow`.** Write the intended `args` object with `Write`
+to `.workflow-args.json` in the session scratchpad. In the command below, replace `$SCRATCHPAD`
+with the literal absolute path of the session scratchpad. Do not set a shell variable.
+Then measure the serialized total, per `.claude/workflows/AGENTS.md` §2:
+
+```bash
+jq 'tojson | utf8bytelength' "$SCRATCHPAD/.workflow-args.json"
+```
+
+If the result is more than 4,000 bytes, remove entries from the end of `recentChurn`, then from
+the end of `contextFiles`.
+Then measure again. Invoke `Workflow` only when the result is 4,000 bytes or less.
+
+The workflow returns
 `{findings, docClaimsChecked, skillsLoaded, agentsFailed}` — schema-validated, no JSON
 parsing or retry needed. Each finding carries a `category` (one of `correctness`, `security`,
 `integrity`, `contracts`, `domain`, `documentation`). Record `DOC_CLAIMS_CHECKED` and
@@ -198,7 +214,8 @@ Agents run: $AGENTS_RUN
 
 ## Behavioral Rules
 
-1. **Read-only** except `.claude/artifacts/bug-bash/` and the Phase 1 inventory sidecar in the session
+1. **Read-only** except `.claude/artifacts/bug-bash/`, the Phase 1 inventory sidecar, the
+   Phase 1 `check-ignore` path list, and the Phase 2 payload file. These files are in the session
    scratchpad. Never modify code, commit, push, or auto-fix.
 2. **Citations are re-read in Phase 3.** Paraphrased/shifted/moved findings are dropped and counted.
 3. **The orchestrator never invents findings** and never prints the report body — only the one-line summary + path.

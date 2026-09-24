@@ -24,7 +24,7 @@ make setup
 cp .env.example .env
 # set EXA_API_KEY and ANTHROPIC_API_KEY
 # ELICIT_API_KEY is reserved for the dormant Elicit client; no live code reads it
-# set EXACT_GITHUB_USER for /commit and /create-pr (gh auth switch)
+# set EXACT_GITHUB_USER for /create-pr, /review-pr and /babysit-pr (scripts/gh-exact)
 
 # 4. Run the gate (lint + format-check + complexity + imports + workflow scripts + tests)
 make check
@@ -33,16 +33,16 @@ make check
 Raw equivalents: `uv sync --extra dev`, `uv run pytest -q`. See `make help`.
 
 Editor: install the Ruff extension. `.vscode/settings.json` turns on format
-and lint-fix on save. Agent `Write`/`StrReplace` hit `make complexity-pre`
-before disk; after an allowed write, `afterFileEdit` runs
+and lint-fix on save. Agent `Write`/`Edit` hit `make complexity-pre`
+before disk; after an allowed write, `PostToolUse` runs
 `scripts/hooks/post-edit.sh` → `make lint-fix FILE=…`. A write under
 `.claude/artifacts/plan/` also runs `scripts/hooks/post-plan.sh` →
 `make plan-check FILE=…`, which reports every path, `TEST=` path, `K=` name
 and `make` target the plan claims but the tree does not carry. It drops the
 findings a half-written plan always carries — a phase or a requirement with
 no task yet — so only real findings reach you. A write under `docs/specs/`
-runs `scripts/hooks/post-spec.sh` the same way. In Claude Code, `.claude/settings.json` also registers both, and runs
-`scripts/hooks/post-bash.sh` after a `Bash` call: it re-runs the complexity,
+runs `scripts/hooks/post-spec.sh` the same way. `.claude/settings.json` registers these hooks. It
+also runs `scripts/hooks/post-bash.sh` after a `Bash` call: it re-runs the complexity,
 specification and plan gates over what the shell changed, because a redirect
 or `sed -i` never reaches the `Write` hook. All of them report; none of them
 denies.
@@ -88,7 +88,7 @@ Do not skip hooks. `git commit --no-verify` is for emergencies only.
 
 ## 4. Complexity gate
 
-`.cursor/hooks/complexity-guard.py` owns the budgets. Do not restate the
+`.claude/hooks/complexity-guard.py` owns the budgets. Do not restate the
 numbers here. Tests, `alembic/`, and `scripts/dev/` are exempt.
 
 - Edit-time `make complexity-pre`: denies a **new or worse** breach vs HEAD

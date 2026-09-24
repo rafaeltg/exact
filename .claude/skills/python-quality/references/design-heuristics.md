@@ -192,7 +192,7 @@ This is concise but dangerous: it hides the interface, breaks IDE autocompletion
 ### Measuring coupling informally
 
 - **Import breadth:** A module that imports most of the package is a coupling hotspot
-- **Constructor dependencies:** `__init__` is a function and carries the parameter cap (`.cursor/hooks/complexity-guard.py`; `self` is excluded). A state bag passed to dodge the cap is a forbidden repair -- see `SKILL.md` § Over-budget functions
+- **Constructor dependencies:** `__init__` is a function and carries the parameter cap (`.claude/hooks/complexity-guard.py`; `self` is excluded). A state bag passed to dodge the cap is a forbidden repair -- see `SKILL.md` § Over-budget functions
 - **Test setup weight:** A unit test that needs a wall of fake configuration proves the coupling, not a testing inconvenience
 - **The "change ripple" test:** If changing one module's internal implementation forces edits across the tree, coupling is too high
 

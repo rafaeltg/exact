@@ -108,7 +108,7 @@ If you can't write the interface down concretely in the producing phase, the des
 
 Some artifacts here LOCK on merge — a phase that ships one commits every later phase to it:
 
-- **The complexity baseline is a per-commit gate, not a merge gate.** The git pre-commit hook runs `make complexity-check`. `.cursor/hooks/complexity-guard.py` owns the budgets. The tree must hold no function over budget. A commit that leaves one over budget therefore fails before CI sees it. **Never park a function over budget for a later phase to fix.** Plan the extraction, and the split it enables, into the same phase.
+- **The complexity baseline is a per-commit gate, not a merge gate.** The git pre-commit hook runs `make complexity-check`. `.claude/hooks/complexity-guard.py` owns the budgets. The tree must hold no function over budget. A commit that leaves one over budget therefore fails before CI sees it. **Never park a function over budget for a later phase to fix.** Plan the extraction, and the split it enables, into the same phase.
 - **`docs/spec.md` and `docs/architecture.md` are the contract.** A phase that changes graph topology, bounds, tools, or citation rules must update both documents in the same change. A later phase cannot correct a shipped contract without a new contract change.
 - **Graph state is a shipped interface.** A phase that adds or reshapes a field on `ExactState`, or on a model in `src/exact/models.py`, binds every later node that reads it. Treat a state-shape change as an explicit cross-phase interface.
 - **The SQLite checkpointer persists state between runs.** A phase that changes the stored shape must say how an existing `exact.sqlite` behaves. Never split one state-shape change across phases.

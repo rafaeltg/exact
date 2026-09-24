@@ -89,18 +89,18 @@ Neighbor rules:
 
 ### Compose units before any body — mandatory
 
-Do not open a Write/StrReplace on a new or grown function until all of these exist (in the reply or in a stub file):
+Do not open a Write/Edit on a new or grown function until all of these exist (in the reply or in a stub file):
 
 1. **Unit list** — every new responsibility named as a function or type title — name the responsibility in one sentence without "and", see [Design — landmines](#design--landmines)
 2. **One job test** — each unit has one verb; two verbs ⇒ two units
 3. **Budget self-check** against [Complexity budgets](#complexity-budgets--landmines) for each unit
 4. **Extract-first** when the unit matches a [Known breach shape](#known-breach-shapes--exact) — helpers and value objects first, thin orchestrator last
 
-Bodies come after the unit list clears the budget self-check. A single Write that introduces an over-budget function is forbidden even if a later edit would repair it — `preToolUse --pre` denies that Write before disk.
+Bodies come after the unit list clears the budget self-check. A single Write that introduces an over-budget function is forbidden even if a later edit would repair it — `PreToolUse --pre` denies that Write before disk.
 
 ### Complexity budgets — landmines
 
-Enforcer: `.cursor/hooks/complexity-guard.py` (`--pre` before Write/StrReplace; `--check` at commit). These numbers are the contract; inventing alternate budgets is forbidden.
+Enforcer: `.claude/hooks/complexity-guard.py` (`--pre` before Write/Edit; `--check` at commit). These numbers are the contract; inventing alternate budgets is forbidden.
 
 | Metric | Max | Gotcha the model misses |
 |--------|-----|-------------------------|
@@ -342,7 +342,7 @@ Name 2–3 specific strengths. Required when the change has any.
 - Uncertainty must be labeled uncertainty — guessing a finding is forbidden; ask instead
 - Do not demand rewrites of working, tested, rule-compliant code for taste
 - Diffs >500 lines: Passes 1–3 before Pass 5
-- Substantial self-authored changes: review in a fresh context / subagent (`AGENTS.md`) — in-context self-review does not satisfy this rule
+- Substantial self-authored changes: review in a fresh context / subagent — in-context self-review does not satisfy this rule
 - Name the consequence the design problem causes; the acronym alone is not a finding
 - Split for cohesion, never for line count — a cohesive large class beats five coupled small ones
 

@@ -11,7 +11,7 @@ from types import ModuleType
 import pytest
 
 _GUARD_PATH = (
-    Path(__file__).resolve().parents[1] / ".cursor" / "hooks" / "spec-guard.py"
+    Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "spec-guard.py"
 )
 
 

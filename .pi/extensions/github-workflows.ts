@@ -3,15 +3,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 export type Workflow = "commit" | "create-pr"
 
 const STDERR_REDIRECT = " 2>/dev/null"
-const KNOWN_VARIABLES = /\$(?:EXACT_GITHUB_USER|ORIGINAL_GH_USER|BRANCH|DEFAULT_BRANCH)\b/g
+const KNOWN_VARIABLES = /\$(?:EXACT_GITHUB_USER|BRANCH|DEFAULT_BRANCH)\b/g
 const SHELL_OPERATORS = /[;&|<>`()\\]|\r|\n/
-const ORIGINAL_ACCOUNT =
-  /^ORIGINAL_GH_USER=\$\(gh api user --jq \.login 2>\/dev\/null\)$/
-const RESTORE_ACCOUNT =
-  /^\[ -n "\$ORIGINAL_GH_USER" \] && gh auth switch -u "\$ORIGINAL_GH_USER"$/
 const COMMIT_HEREDOC = /^git commit -F - <<'EOF'\r?\n([\s\S]*)\r?\nEOF$/
 const PR_CREATE_HEREDOC =
-  /^gh pr create --title "[^"$`\r\n]*" --body "\$\(cat <<'EOF'\r?\n([\s\S]*)\r?\nEOF\r?\n\)" --assignee "\$EXACT_GITHUB_USER"$/
+  /^scripts\/gh-exact pr create --title "[^"$`\r\n]*" --body "\$\(cat <<'EOF'\r?\n([\s\S]*)\r?\nEOF\r?\n\)" --assignee "\$EXACT_GITHUB_USER"$/
 const BRANCH_HISTORY =
   /^git (?:log --oneline|diff --stat) \$\(git merge-base HEAD origin\/\$DEFAULT_BRANCH\)\.\.HEAD$/
 const MERGE_BASE = /^git merge-base HEAD origin\/[A-Za-z0-9._/-]+$/
@@ -25,21 +21,17 @@ const SIMPLE_COMMANDS: Record<Workflow, readonly RegExp[]> = {
     /^git log(?: --oneline)?$/,
     /^git commit$/,
     /^git commit -m "[^"$`;&|<>()[\]\r\n]+"$/,
-    /^gh auth switch -u "\$EXACT_GITHUB_USER"$/,
-    /^gh api user --jq \.login$/,
   ],
   "create-pr": [
     /^git branch --show-current$/,
-    /^git log(?: --oneline|-n 10 --oneline)?$/,
+    /^git log(?: --oneline| -n 10 --oneline)?$/,
     /^git diff(?: --stat)?$/,
     /^git diff --stat HEAD~10$/,
-    /^git status(?: --short|-sb)?$/,
+    /^git status(?: --short| -sb)?$/,
     /^git rev-parse --abbrev-ref @\{upstream\}$/,
     /^git push$/,
     /^git push -u origin \$BRANCH$/,
-    /^gh repo view --json defaultBranchRef --jq '\.defaultBranchRef\.name'$/,
-    /^gh auth switch -u "\$EXACT_GITHUB_USER"$/,
-    /^gh api user --jq \.login$/,
+    /^scripts\/gh-exact repo view --json defaultBranchRef --jq '\.defaultBranchRef\.name'$/,
   ],
 }
 
@@ -70,7 +62,6 @@ function isSimpleAllowedCommand(workflow: Workflow, command: string): boolean {
 }
 
 function isSpecialAllowedCommand(workflow: Workflow, command: string): boolean {
-  if (ORIGINAL_ACCOUNT.test(command) || RESTORE_ACCOUNT.test(command)) return true
   const commit = command.match(COMMIT_HEREDOC)
   if (workflow === "commit" && commit) return safeHeredocBody(commit[1])
   const pullRequest = command.match(PR_CREATE_HEREDOC)

@@ -12,17 +12,18 @@ You write one specification. The specification is the product contract. `/plan` 
 product decision from it, and from nothing else.
 
 **You delegate the reading and the gap search. You keep the questions and the document.**
-Three agents do the work that does not need this conversation:
+Four agents do the work that does not need this conversation:
 
 | Agent | Gives you | Never gives you |
 |---|---|---|
-| `codebase-pattern-finder` | current behavior and conventions, with `file:line` | a recommendation |
+| `Explore` | current behavior of an area, with `file:line` | a recommendation |
+| `codebase-pattern-finder` | a repeated convention and its variants, with `file:line` | a recommendation |
 | `web-researcher` | external contracts and prior art, with URLs | a repository fact |
 | `spec-gap-finder` | the contract restatement and the gap list | a product answer |
 
 No agent holds a `Write` grant. **You write every byte of the document.**
 
-`.cursor/hooks/spec-guard.py` owns the validation rules. `make spec-check` is authoritative. The
+`.claude/hooks/spec-guard.py` owns the validation rules. `make spec-check` is authoritative. The
 lists below help you write; they never replace a run of the gate.
 
 ## Phase 0 — Parse and pin
@@ -44,23 +45,27 @@ lists below help you write; they never replace a run of the gate.
 
 Send the agents in one block when their questions are independent.
 
-1. **`codebase-pattern-finder`, one agent per area the request touches.** Ask each one for the
-   current behavior, the convention, and a `file:line` for every claim. Name the area. Never ask
-   for an opinion, a ranking, or a design.
-2. **`web-researcher`, only for a fact the repository cannot hold.** A vendor contract, a library
+1. **`Explore`, one agent per area the request touches.** Ask each one how the area works now,
+   with a `file:line` for every claim. Name the area. Never ask for an opinion, a ranking, or a
+   design.
+2. **`codebase-pattern-finder`, only for a convention that repeats across files.** Send it when
+   the specification must follow or change that convention. Ask for the variants, the count of
+   each, and a `file:line` for every claim.
+3. **`web-researcher`, only for a fact the repository cannot hold.** A vendor contract, a library
    semantic, a protocol rule, or prior art. The agent has no filesystem access. Give it a
    self-contained question. Do not send it a repository path.
-3. Record each returned reference as an `E<n>` line. § Document structure owns the grammar. Check
+4. Record each returned reference as an `E<n>` line. § Document structure owns the grammar. Check
    a suspect reference with `Read` before you write it.
-4. **A statement from the input document is `person-decision`.** Never cite the input as `repo:`
+5. **A statement from the input document is `person-decision`.** Never cite the input as `repo:`
    evidence. A brief is deleted once the work lands, and the specification then fails its gate
    long after this run.
 
 ## Phase 2 — Write the draft
 
-Write `docs/specs/<topic>.md` with `Status: Draft`, and write it with `Write` or `Edit` only. **A
-Bash write skips the gate hook.** Use the structure in **Document structure**. Write in ASD-STE100
-Simplified Technical English (`AGENTS.md`). The gate limits a sentence to 25 words. Keep an
+Write `docs/specs/<topic>.md` with `Status: Draft`, and write it with `Write` or `Edit` only. **The
+gate hook checks every `Write` and `Edit`, but it can miss a Bash write:** a shell write in the
+same clock second as the last check is not checked. Use the structure in **Document structure**. Write in ASD-STE100
+Simplified Technical English (`CONTRIBUTING.md` §7). The gate limits a sentence to 25 words. Keep an
 instruction to 20.
 
 Write the behavior you can prove. Write every gap as an open question. Do not fill a gap.
@@ -101,8 +106,8 @@ It returns the contract restatement and the gap list.
 5. Write each accepted answer into `## Decisions` as `D<n>`. Give it the question, the answer, the
    impact, and the evidence. **`Evidence` holds exactly one value.** `E1, E3` fails the gate.
    Cite the strongest single reference.
-6. **Repeat the repository comparison after an answer changes behavior.** Send
-   `codebase-pattern-finder` again for the affected area. Send the gap finder again when the
+6. **Repeat the repository comparison after an answer changes behavior.** Send `Explore` again
+   for the affected area, and `codebase-pattern-finder` when the answer touches a convention. Send the gap finder again when the
    answer opens a new surface. A later answer can contradict an earlier requirement, and it can
    invalidate a question you asked in the same batch. Ask that question again.
 7. Keep every unanswered gap as a `### Q<n>` entry in `## Open questions`.

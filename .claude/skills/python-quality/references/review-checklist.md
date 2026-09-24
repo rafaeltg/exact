@@ -2,7 +2,7 @@
 
 Authoritative item list for thorough, large, or unfamiliar reviews. Every unchecked applicable item is either cleared with evidence or filed as a finding. Skipping an applicable item is a failed review.
 
-Sections 1–4 and 12 carry the design contract of `SKILL.md` § Design — landmines. Each item names the landmine it prevents. Omission and over-application both fail: an absent boundary abstraction and a Protocol with one implementation are each a finding. The complexity budgets are not restated here — `.cursor/hooks/complexity-guard.py` owns them and `SKILL.md` § Complexity budgets states them once.
+Sections 1–4 and 12 carry the design contract of `SKILL.md` § Design — landmines. Each item names the landmine it prevents. Omission and over-application both fail: an absent boundary abstraction and a Protocol with one implementation are each a finding. The complexity budgets are not restated here — `.claude/hooks/complexity-guard.py` owns them and `SKILL.md` § Complexity budgets states them once.
 
 ## 1. Responsibility and boundaries
 
@@ -133,7 +133,7 @@ Sections 1–4 and 12 carry the design contract of `SKILL.md` § Design — land
 
 ### Functions
 
-- [ ] Every function stays inside the guard budgets — `SKILL.md` § Complexity budgets (`.cursor/hooks/complexity-guard.py` owns the numbers)
+- [ ] Every function stays inside the guard budgets — `SKILL.md` § Complexity budgets (`.claude/hooks/complexity-guard.py` owns the numbers)
 - [ ] Each function does one thing at one level of abstraction
 - [ ] No high-level orchestration mixed with low-level detail in one body
 - [ ] A parameter list that needs a comment to read is a parameter object

@@ -1,7 +1,7 @@
 ---
 description: Forensic assessment of an existing artifact (doc, spec, config, schema, or instruction file) for correctness, completeness, and consistency — writes a findings report, then on request transitions to Plan Mode to turn accepted findings into a patch plan. Use when the artifact's CLAIMS ABOUT REALITY are in doubt; when its IDEAS/ASSUMPTIONS are in doubt use /devils-advocate; unsure → run this first (you can't harden an idea whose factual premises are false)
 argument-hint: "<artifact path>  (or: compare <A> vs <B> | review findings in <path> | changes to <path>)"
-allowed-tools: Workflow, Task, Read, Glob, Grep, Write, Bash(date*), Bash(mkdir*), EnterPlanMode
+allowed-tools: Workflow, Task, Read, Glob, Grep, Write, Bash(jq*), Bash(date*), Bash(mkdir*), EnterPlanMode
 disable-model-invocation: true
 ---
 
@@ -19,7 +19,7 @@ are *correct*, not whether an idea is sound (`/devils-advocate`) or a code diff 
 workflow script inlines that skill's rubric into each agent's context.
 
 Run Phases 0-6 autonomously — no mid-run user interaction. Read-only except the final report
-under `.claude/artifacts/forensic-review/`. Phase 7 (patch planning) runs ONLY on explicit user
+under `.claude/artifacts/forensic-review/` and `.workflow-args.json` in the session scratchpad. Phase 7 (patch planning) runs ONLY on explicit user
 request, after Phase 6 has already stopped and the user has responded.
 
 ## Severity Definitions
@@ -132,6 +132,19 @@ This variant needs the measurement most. The five path fields carry no stated ca
 own — with every key present and long absolute paths this variant runs closest to the ceiling
 of the five commands, so keep paths short where you can. Pass absolute paths,
 or paths the agents can resolve from the repo root.
+
+**Measure the payload before you invoke `Workflow`.** Write the intended `args` object with `Write`
+to `.workflow-args.json` in the session scratchpad. In the command below, replace `$SCRATCHPAD`
+with the literal absolute path of the session scratchpad. Do not set a shell variable.
+Then measure the serialized total, per `.claude/workflows/AGENTS.md` §2:
+
+```bash
+jq 'tojson | utf8bytelength' "$SCRATCHPAD/.workflow-args.json"
+```
+
+If the result is more than 4,000 bytes, make `contextSources` or `framingBrief` smaller, or use
+shorter paths.
+Then measure again. Invoke `Workflow` only when the result is 4,000 bytes or less.
 
 The workflow returns — schema-validated, no
 JSON parsing or retry needed:
@@ -249,7 +262,7 @@ expertise, name the skill to load during execution: `python-quality` for code an
 
 ## Behavioral Rules
 
-1. **Read-only through Phase 6.** Only `.claude/artifacts/forensic-review/` is written. Never modify the assessed artifact, commit, or push. Phase 7 only runs on explicit request and only edits what an approved plan says to.
+1. **Read-only through Phase 6.** Only `.claude/artifacts/forensic-review/` and the Phase 3 payload file in the session scratchpad are written. Never modify the assessed artifact, commit, or push. Phase 7 only runs on explicit request and only edits what an approved plan says to.
 2. **No finding without a verbatim quote on both sides** (except legitimate pure-gap findings, where the reality side is `'n/a'`).
 3. **Citations are re-read in Phase 4.** Paraphrased or fabricated findings are dropped and counted.
 4. **The orchestrator never invents findings and never prints the report body** — only the Phase 6 summary and path.

@@ -77,15 +77,15 @@ Google-style for non-obvious public APIs. Skip when the signature is sufficient.
 
 ## Complexity guard — required
 
-`.cursor/hooks/complexity-guard.py` owns enforcement. Budgets and known breach
+`.claude/hooks/complexity-guard.py` owns enforcement. Budgets and known breach
 shapes live in the main skill (Gate 0). Inventing alternate budgets in a
 review is forbidden.
 
 | Hook | When | Effect |
 |------|------|--------|
-| `preToolUse --pre` | Before `Write` / `StrReplace` | Deny over-budget prospective content; nothing hits disk |
-| `afterFileEdit` | After an allowed write | Ruff lint-fix + format only |
-| `postToolUse` | `TabWrite` | Advisory complexity context |
+| `PreToolUse --pre` | Before `Write` / `Edit` | Deny over-budget prospective content; nothing hits disk |
+| `PostToolUse` | After an allowed `Write` / `Edit` | Ruff lint-fix + format only |
+| `PostToolUse` | After `Bash` | Report over-budget functions a shell write landed |
 | `--check` | Pre-commit / DoD | Fail if any tracked function is over budget |
 
 Gotcha: a post-edit soft signal is not permission to park debt. `--pre` and

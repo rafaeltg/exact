@@ -31,8 +31,8 @@ proj="${proj%/}"
 command -v jq >/dev/null 2>&1 || exit 0
 command -v make >/dev/null 2>&1 || exit 0
 
-# Cursor afterFileEdit: file_path (top-level or tool_input).
-# Claude / serena: tool_input.file_path or tool_input.relative_path.
+# Claude Code: tool_input.file_path. serena: tool_input.relative_path.
+# `post-bash.sh` sends tool_input.file_path. The other keys are fallbacks.
 f="$(printf '%s' "$input" | jq -r '
   .file_path
   // .tool_input.file_path

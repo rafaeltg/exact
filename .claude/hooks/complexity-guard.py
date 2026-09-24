@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""`.cursor/hooks/complexity-guard.py` — Hook that blocks Python edits which
+"""`.claude/hooks/complexity-guard.py` — Hook that blocks Python edits which
 violate complexity budgets.
 
 Three modes:
 
-- `--pre` (Cursor `preToolUse` on Write/StrReplace): build the prospective
-  file from tool arguments, measure it, and deny with
-  `permission: deny` before anything hits disk. Fails closed.
-- No flag (Cursor `afterFileEdit` / `postToolUse`, e.g. TabWrite): measure
-  the file already on disk and inject `additional_context`. Fails open.
+- `--pre` (Claude Code `PreToolUse` on Write/Edit): build the prospective
+  file from tool arguments, measure it, and deny (exit 2) before anything
+  hits disk. Fails closed.
+- No flag (post-edit advisory): measure the file already on disk and inject
+  `additionalContext`. Fails open. No hook registers this mode today.
 - `--check` (pre-commit merge gate): measure every tracked `.py` in the
   index. Fails closed. A silent pass here hides real regressions.
 
@@ -42,7 +42,7 @@ Post-edit mode fails open (exit 0) on garbage stdin, missing file, or a
 file the host interpreter cannot parse — a broken advisory hook must not
 freeze the session. `--pre` and `--check` do not fail open.
 
-Ruff lint/format stay on `afterFileEdit` and run only after a write is
+Ruff lint/format stay on `PostToolUse` and run only after a write is
 allowed. Format does not change cyclomatic complexity, parameters, or
 nesting; function length ignores blanks and comments.
 
@@ -628,7 +628,7 @@ def _prospective_bytes(path: Path, payload: dict, tool_input: dict) -> bytes | N
 
 
 def _emit_permission(permission: str, *, agent_message: str | None = None) -> int:
-    """Print a Cursor preToolUse permission verdict and return the exit code."""
+    """Print a PreToolUse permission verdict and return the exit code."""
     body: dict[str, str] = {"permission": permission}
     if agent_message is not None:
         body["agent_message"] = agent_message
@@ -829,7 +829,7 @@ def _run_hook(payload: dict) -> tuple[int, str, str | None]:
 
 
 def _run_pre(payload: dict) -> tuple[int, str, str | None, Path | None]:
-    """The preToolUse decision for prospective Write/StrReplace contents."""
+    """The PreToolUse decision for prospective Write/Edit contents."""
     tool_input = _tool_input(payload)
     path = _target_file(tool_input)
     if path is None or path.suffix.lower() != ".py":
@@ -876,7 +876,7 @@ def main() -> int:
 
 
 def pre_main() -> int:
-    """preToolUse gate. Denies before disk write; fails closed on errors."""
+    """PreToolUse gate. Denies before disk write; fails closed on errors."""
     record: dict[str, object] = {"ts": _now(), "python": platform.python_version()}
     try:
         payload = json.load(sys.stdin)

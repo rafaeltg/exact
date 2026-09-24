@@ -1,0 +1,12 @@
+#!/bin/sh
+# Run one `gh` command as EXACT_GITHUB_USER without `gh auth switch`.
+#
+# `gh auth switch` changes the account for every terminal until someone switches
+# back, so every exit path of a command must restore it. GH_TOKEN takes
+# precedence over the stored account for this one process only, so nothing
+# needs restoring. `git push` is not affected: the remote uses SSH.
+set -eu
+: "${EXACT_GITHUB_USER:?EXACT_GITHUB_USER is not set}"
+token=$(gh auth token --user "$EXACT_GITHUB_USER" 2>/dev/null) || token=
+[ -n "$token" ] || { echo "gh-exact: gh has no token for $EXACT_GITHUB_USER" >&2; exit 1; }
+GH_TOKEN=$token exec gh "$@"

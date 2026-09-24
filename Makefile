@@ -1,9 +1,9 @@
 .PHONY: help setup install-hooks \
         test test-failed \
         lint lint-fix format format-fix \
-        complexity-check complexity-pre complexity-post complexity-report \
+        complexity-check complexity-pre complexity-report \
         spec-check spec-check-ready spec-check-index spec-check-all \
-        plan-check plan-init imports-check \
+        plan-check plan-init pr-feedback imports-check \
         workflows-check pi-test \
         check clean
 
@@ -24,12 +24,14 @@ export PROJECT
 #                        complexity-report one .py / .pyi file
 #                        plan-check one .md plan artifact
 # TOPIC=<slug>         → plan-init one docs/specs/<slug>.md topic
+# PR=<number>          → pr-feedback for one pull request
 TEST  ?=
 K     ?=
 FILE  ?=
 TOPIC ?=
+PR    ?=
 
-PYTHON_SRC = src tests .cursor/hooks
+PYTHON_SRC = src tests .claude/hooks
 
 ifeq ($(VERBOSE),1)
 PYTEST_ARGS = -vv -x
@@ -47,9 +49,10 @@ endif
 UV     = uv run
 RUFF   = $(UV) ruff
 PYTEST = $(UV) pytest
-GUARD       = python3 .cursor/hooks/complexity-guard.py
-SPEC_GUARD  = python3 .cursor/hooks/spec-guard.py
-PLAN_GUARD  = python3 .cursor/hooks/plan-guard.py
+GUARD       = python3 .claude/hooks/complexity-guard.py
+SPEC_GUARD  = python3 .claude/hooks/spec-guard.py
+PLAN_GUARD  = python3 .claude/hooks/plan-guard.py
+PR_FEEDBACK = $(UV) python .claude/hooks/pr-feedback.py
 
 define require_python_file
 	@case "$(FILE)" in \
@@ -135,13 +138,10 @@ complexity-check: ## Fail when any function is over budget
 	$(AT)printf '==> complexity-check\n' >&2
 	$(AT)$(GUARD) --check
 
-# Cursor hooks: stdout is protocol JSON — never print banners here.
+# Claude Code hook: stdout is protocol JSON — never print banners here.
 # Always `@` so VERBOSE=1 cannot echo the recipe onto stdout.
-complexity-pre: ## Cursor preToolUse — deny over-budget Write/StrReplace
+complexity-pre: ## Claude Code PreToolUse — deny over-budget Write/Edit
 	@$(GUARD) --pre
-
-complexity-post: ## Cursor postToolUse — advisory complexity context
-	@$(GUARD)
 
 # Every function's measured metrics against its budget. A plan author needs the
 # headroom of the functions a task grows; without this, the only source is the
@@ -207,6 +207,16 @@ plan-init: ## Gate the inputs of one plan and print its metadata. TOPIC=<slug>
 	@test -n "$(TOPIC)" || { \
 	  printf 'error: plan-init requires TOPIC=<topic-slug>\n' >&2; exit 2; }
 	$(AT)$(PLAN_GUARD) --init "$(TOPIC)"
+
+# The pending review feedback of one PR, as JSON on stdout, for `/babysit-pr`.
+# It reads EXACT_GITHUB_USER and never switches the global `gh` account. It runs
+# under `uv run`: the script needs Python 3.12, and the system python3 can be older.
+# The recipe line stays silent under VERBOSE=1, so stdout holds only the JSON.
+pr-feedback: ## Print the pending review feedback of one PR as JSON. PR=<number>
+	$(AT)printf '==> pr-feedback%s\n' "$(if $(PR), ($(PR)),)" >&2
+	@test -n "$(PR)" || { \
+	  printf 'error: pr-feedback requires PR=<number>\n' >&2; exit 2; }
+	@$(PR_FEEDBACK) --pr "$(PR)"
 
 # ─── Workflow scripts ──────────────────────────────────────────────────
 # `.claude/workflows/*.js` run in the agent harness, not in any interpreter this

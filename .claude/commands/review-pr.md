@@ -1,7 +1,7 @@
 ---
 description: Adversarial review of a GitHub PR's diff — routes on size (one quick pass for a small diff, a parallel lens audit + judge panel for a large one), posts inline comments pinned to the head SHA plus a PR-level approach critique, or writes a dry-run report
 argument-hint: "<pr-number> [dry-run]"
-allowed-tools: Workflow, Read, Glob, Grep, Write, Bash(gh auth*), Bash(gh api*), Bash(rtk proxy gh api*), Bash(gh pr*), Bash(gh repo*), Bash(jq*), Bash(git fetch*), Bash(git worktree*), Bash(git rev-parse*), Bash(git -C*), Bash(mktemp*), Bash(date*), Bash(mkdir*)
+allowed-tools: Workflow, Read, Glob, Grep, Write, Bash(scripts/gh-exact api*), Bash(rtk proxy scripts/gh-exact api*), Bash(scripts/gh-exact pr*), Bash(scripts/gh-exact repo*), Bash(jq*), Bash(git fetch*), Bash(git worktree*), Bash(git rev-parse*), Bash(git -C*), Bash(mktemp*), Bash(date*), Bash(mkdir*)
 disable-model-invocation: true
 ---
 
@@ -30,9 +30,9 @@ critique an outlet that fits it.
 
 Run autonomously after Phase 0. Read-only on the PR's code (a disposable worktree, removed on
 every exit path); the only mutations are the PR review — inline comments plus its body, skipped
-entirely in `dry-run` mode — three scratch files in the session scratchpad
-(`.existing-comments.json` and `.pr-diff.patch` always, `.review-payload.json` in posting mode
-only), and the temporary `gh auth switch`, which is always restored.
+entirely in `dry-run` mode — four scratch files in the session scratchpad
+(`.existing-comments.json`, `.pr-diff.patch` and `.workflow-args.json` always,
+`.review-payload.json` in posting mode only). The global `gh` account never changes (Phase 1).
 
 ## Severity Definitions
 
@@ -63,37 +63,27 @@ blocks live in `.claude/workflows/review-pr.js` — the md never restates them.
 Parse `$ARGUMENTS`: split on whitespace. First token is the PR number — strip a leading `#`.
 If any remaining token (case-insensitive) is `dry-run`, set `DRY_RUN = true`; else `false`.
 
-## Phase 1 — Account Preflight (switch → review → restore)
+## Phase 1 — Account
 
-Verify `EXACT_GITHUB_USER` is set. If empty or unset, tell the user to configure it and
-**STOP** (nothing to restore yet). This applies in both modes — even `dry-run` needs the
-right account to read the PR.
-
-```bash
-ORIGINAL_GH_USER=$(gh api user --jq .login 2>/dev/null)
-gh auth switch -u $EXACT_GITHUB_USER
-```
-
-If the switch fails, inform the user (they likely need `gh auth login`) and **STOP** —
-nothing changed, no restore needed.
-
-**From this point on, every exit path — success, error, or any STOP below — MUST end by
-restoring the original account** (the same finally-block discipline as `/resolve-pr`):
-
-```bash
-[ -n "$ORIGINAL_GH_USER" ] && gh auth switch -u "$ORIGINAL_GH_USER"
-```
+`EXACT_GITHUB_USER` must name the account the review acts as. This applies in both modes: a
+`dry-run` also needs the right account to read the PR. **Every `gh` call runs through
+`scripts/gh-exact`**, never bare `gh`. The wrapper sets `GH_TOKEN` to the token of
+`EXACT_GITHUB_USER` for that one process, so the global `gh` account never changes and there is
+nothing to restore on any exit path. The first call in Phase 2 checks the variable: it fails with
+"EXACT_GITHUB_USER is not set" or "gh has no token for …". On that failure, tell the user to set
+the variable or to run `gh auth login` for that account, and **STOP**.
 
 ## Phase 2 — Eligibility, SHA Pin, Stated Intent & Existing Comments
 
 ```bash
-gh pr view $PR --json state,isDraft,headRefOid,additions,deletions,changedFiles,title,body
-gh repo view --json nameWithOwner --jq '.nameWithOwner'
+scripts/gh-exact pr view $PR --json state,isDraft,headRefOid,additions,deletions,changedFiles,title,body
+scripts/gh-exact repo view --json nameWithOwner --jq '.nameWithOwner'
 ```
 
-If `state` is not `OPEN` or `isDraft` is `true`, inform the user, restore, and **STOP**.
+If `state` is not `OPEN` or `isDraft` is `true`, inform the user and **STOP**.
 Record `FULL_SHA` (`headRefOid`), `DIFF_STATS` (`additions`, `deletions`, `changedFiles`),
-`REPO` (`owner/repo`).
+`REPO` (`owner/repo`), `OWNER` (the part of `REPO` before the `/`) and `REPO_NAME` (the part
+after the `/`).
 
 Record `PR_TITLE` (`title`) and `PR_BODY` (`body`, truncated to the first 2,000 **bytes** — not
 characters, because the 4,000-byte command-side total is a byte total and a PR body is prose
@@ -118,7 +108,7 @@ there needs cleanup, and it cannot collide with a path the PR itself ships.
 Fetch existing comments (so the review never re-reports what's already there):
 
 ```bash
-gh api graphql --paginate --slurp -f query='
+scripts/gh-exact api graphql --paginate --slurp -f query='
   query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
     repository(owner:$owner, name:$name) {
       pullRequest(number:$number) {
@@ -129,10 +119,10 @@ gh api graphql --paginate --slurp -f query='
       }
     }
   }
-' -F owner="$OWNER" -F name="$REPO_NAME" -F number=$PR \
+' -f owner="$OWNER" -f name="$REPO_NAME" -F number=$PR \
   | jq '[.[].data.repository.pullRequest.reviewThreads.nodes[]]'
-gh api --paginate repos/$REPO/issues/$PR/comments --jq '[.[] | {body}]' | jq -s 'add // []'
-gh api --paginate repos/$REPO/pulls/$PR/reviews --jq '[.[] | select(.body != "") | {body}]' | jq -s 'add // []'
+scripts/gh-exact api --paginate repos/$REPO/issues/$PR/comments --jq '[.[] | {body}]' | jq -s 'add // []'
+scripts/gh-exact api --paginate repos/$REPO/pulls/$PR/reviews --jq '[.[] | select(.body != "") | {body}]' | jq -s 'add // []'
 ```
 
 **Keep `--paginate` on all three calls.** Without it a call returns only its first page. A
@@ -155,7 +145,7 @@ raw error body to stdout, so the two REST pipelines emit a JSON **object** (`{"m
 Found",…}`) and still exit 0. `jq -s 'add // []'` passes that object straight through. A `403`
 rate limit or a network failure therefore hands you something that is not a list, and the
 duplicate guard goes fully off rather than degrading. Verify each of the three results is an
-array before you combine them. Restore the account and **STOP** if one is not. The GraphQL call
+array before you combine them. **STOP** if one is not. The GraphQL call
 fails loudly on its own (non-zero `jq` exit, no stdout), so it needs no separate check.
 
 **Residual bound, accepted.** The nested `comments(first:100)` connection cannot be
@@ -226,24 +216,23 @@ git worktree add --detach "$WT" FETCH_HEAD
 ```
 
 Verify `git -C "$WT" rev-parse HEAD` equals `FULL_SHA` (a push raced the fetch) — if not,
-remove the worktree, restore the account, and **STOP** with a message to re-run.
+remove the worktree and **STOP** with a message to re-run.
 
 **From this point on, every exit path also removes the worktree** (`git worktree remove
---force "$WT"`), alongside the account restore from Phase 1 — same finally-block discipline,
-now covering two resources.
+--force "$WT"`) — a finally-block discipline.
 
 Now fetch the diff into the session scratchpad (`$SCRATCH`, from Phase 2 — **not** into the
 worktree; see below):
 
 ```bash
-gh pr diff $PR > "$SCRATCH/.pr-diff.patch"
+scripts/gh-exact pr diff $PR > "$SCRATCH/.pr-diff.patch"
 ```
 
 **Check that it worked before going on.** The redirect creates the file whether or not the fetch
 succeeded, so a network, auth, or rate-limit failure leaves a well-formed empty diff — the lenses
 would find nothing and Phase 8 would print a confident "no findings" on an unreviewed PR. If the
 command exited non-zero, **or** the file is empty while `DIFF_STATS` reports a non-zero change
-count, remove the worktree, restore the account, and **STOP**.
+count, remove the worktree and **STOP**.
 
 `DIFF_PATH = $SCRATCH/.pr-diff.patch`.
 
@@ -309,8 +298,20 @@ Pass arrays as real JSON arrays, not strings. `diffPath` and `existingCommentsPa
 unbounded artifacts — never `diffText`, never an inline `existingComments` array; the agents Read
 both files. `existingCommentsPath` is always present, even for an empty list. The whole `args`
 payload must stay under the 4,000-byte command-side total in `.claude/workflows/AGENTS.md`.
-**Nothing checks this for you** — the script's warning fires at 12,000, three times the budget,
-so a run that is over by 1,000 bytes is silent.
+The script's warning fires at 12,000, three times the budget, so a run that is over by 1,000 bytes
+is silent.
+
+**Measure the payload before you invoke `Workflow`.** Write the intended `args` object with `Write`
+to `$SCRATCH/.workflow-args.json`.
+Then measure the serialized total, per `.claude/workflows/AGENTS.md` §2:
+
+```bash
+jq 'tojson | utf8bytelength' "$SCRATCH/.workflow-args.json"
+```
+
+If the result is more than 4,000 bytes, cut `prBody` to fewer bytes and set `BODY_TRUNCATED`.
+`prBody` is the only inline field without a small bound.
+Then measure again. Invoke `Workflow` only when the result is 4,000 bytes or less.
 
 `FULL_SHA` is deliberately **not** in the payload: the script never reads it, and all five of its
 consumers are orchestrator-side — Phase 3's worktree SHA-race check (the earliest, and the reason
@@ -382,7 +383,7 @@ the report body.
 **Skipped as already reported:** $N_SKIPPED_DUPLICATE   ← include ONLY if > 0
 **Findings:** $N_TOTAL total — $N_CRITICAL critical, $N_MAJOR major, $N_HIGH high (capped at top 10)
 **Approach notes:** $N_APPROACH   ← include ONLY if > 0
-**Note:** PR description truncated to 2,000 bytes for the lenses  ← include ONLY if $BODY_TRUNCATED
+**Note:** PR description truncated for the lenses  ← include ONLY if $BODY_TRUNCATED
 
 ---
 
@@ -465,7 +466,7 @@ all), at `$SCRATCH/.review-payload.json`:
 ```
 
 ```bash
-rtk proxy gh api repos/$REPO/pulls/$PR/reviews --input "$SCRATCH/.review-payload.json"
+rtk proxy scripts/gh-exact api repos/$REPO/pulls/$PR/reviews --input "$SCRATCH/.review-payload.json"
 ```
 
 It goes in the session scratchpad for the reason the diff does (§ Phase 3): a PR can ship a file
@@ -479,7 +480,7 @@ Post nothing — never submit an empty review — only when **both** `FINAL_FIND
 
 ## Phase 8 — Cleanup & Terminal Summary
 
-Remove the worktree, restore the original `gh` account (Phases 1 and 3's finally-block), then
+Remove the worktree (Phase 3's finally-block), then
 print exactly this — nothing more. The scratch files need no cleanup: the session scratchpad is
 session-scoped.
 
@@ -519,12 +520,13 @@ PR Review aborted: PR head moved from $FULL_SHA during review — re-run to revi
 
 1. **Read-only on the PR's code.** No tracked file is ever modified, and **nothing is ever written
    into the worktree** — a PR can ship a file at any path, so a write there could overwrite
-   tracked content. All three scratch files live in the session scratchpad:
+   tracked content. All four scratch files live in the session scratchpad:
    `.existing-comments.json` and `.pr-diff.patch` (both modes — each is passed to the agents by
-   path, never inlined) and `.review-payload.json` (posting mode only). The scratchpad is
+   path, never inlined), `.workflow-args.json` (both modes — the payload measurement in Phase 5)
+   and `.review-payload.json` (posting mode only). The scratchpad is
    session-scoped, so none of them needs a cleanup step; the worktree is still disposable and
    still removed on every exit path. Only PR comments are ever posted — inline plus the review
-   body (never in `dry-run` mode) — and the `gh` account switch is always restored.
+   body (never in `dry-run` mode) — and the global `gh` account never changes.
 2. **Citations are re-read in Phase 6.** Paraphrased/shifted/moved findings are dropped and
    counted. Approach findings are path-checked instead (every `paths` entry must exist, and at
    least one must appear in the diff).
@@ -551,5 +553,5 @@ PR Review aborted: PR head moved from $FULL_SHA during review — re-run to revi
    worktree.
 9. **A draft or non-OPEN PR is fatal** — stop with a clear error; never silently proceed.
 10. **A moved head aborts posting** — never post comments anchored to stale line numbers.
-11. **`gh auth switch` mutates global CLI state** — restored on every exit path, including
-    early STOPs, exactly like `/resolve-pr`.
+11. **Every `gh` call runs through `scripts/gh-exact`** — never bare `gh`, never
+    `gh auth switch`.

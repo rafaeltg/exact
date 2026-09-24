@@ -49,7 +49,7 @@ taste for what a plan should say.
 - **Read in line windows.** `Grep` for a definition or a caller, then `Read`
   the matching lines with an offset. A whole-file read of a file you need one
   symbol from costs more and proves less.
-- **Do not read `.cursor/hooks/*.py`.** The guards are 100 KB of code that
+- **Do not read `.claude/hooks/*.py`.** The guards are 100 KB of code that
   checks what you must not check again, and the one number you need from them
   is in the complexity report your caller passed.
 - You hold no Bash grant. Everything you claim comes from a file you read.

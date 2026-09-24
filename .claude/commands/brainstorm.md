@@ -9,7 +9,7 @@ description: >
   into planning. Skip for closed questions with one right answer, syntax/lookups, and
   bugs with a known root cause (nothing to diverge on).
 argument-hint: "<problem statement or file path>"
-allowed-tools: Workflow, Read, Glob, Grep, Write, AskUserQuestion, Bash(date*), Bash(mkdir*)
+allowed-tools: Workflow, Read, Glob, Grep, Write, AskUserQuestion, Bash(jq*), Bash(date*), Bash(mkdir*)
 disable-model-invocation: true
 ---
 
@@ -87,6 +87,18 @@ Invoke the `Workflow` tool with `name: "brainstorm"` (script:
 Phase 0 caps both fields at 1,500 bytes each — bytes, not characters, because the 4,000-byte
 command-side total is a byte total (`.claude/workflows/AGENTS.md` § Units). Never send a longer
 problem statement, and never send the whole file. That prefix is what the workflow consumes.
+
+**Measure the payload before you invoke `Workflow`.** Write the intended `args` object with `Write`
+to `.workflow-args.json` in the session scratchpad. In the command below, replace `$SCRATCHPAD`
+with the literal absolute path of the session scratchpad. Do not set a shell variable.
+Then measure the serialized total, per `.claude/workflows/AGENTS.md` §2:
+
+```bash
+jq 'tojson | utf8bytelength' "$SCRATCHPAD/.workflow-args.json"
+```
+
+If the result is more than 4,000 bytes, use a shorter prefix of the file for `contextFile`.
+Then measure again. Invoke `Workflow` only when the result is 4,000 bytes or less.
 
 Classification (`problemKind`, `depth`, `frameCount`, `ideasPerFrame`, and the grounding
 decision) is computed inside the workflow's `classify()` — do not pass it. It comes back in
@@ -287,7 +299,8 @@ Full report (wide set + all scores): <REPORT_PATH>
 
 ## Behavioral Rules
 
-1. **Read-only on source.** Only write under `.claude/artifacts/brainstorm/`. Never edit source files,
+1. **Read-only on source.** Only write under `.claude/artifacts/brainstorm/`, and the Phase 1 payload file in the
+   session scratchpad. Never edit source files,
    commit, or push.
 2. **Inline output is primary.** The user reads the terminal, not the file. The file is
    reference — do not tell the user to "go read the report."

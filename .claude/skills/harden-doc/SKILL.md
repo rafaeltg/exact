@@ -68,7 +68,7 @@ and silent execution would be writing architecture on the user's behalf.
    - **Does it change topology, a bound, a tool, or a citation rule?** Then it is a change
      to the graph contract. If `SUBJECT` is a `docs/plans/*.md`, land the decision in the
      plan — body and locked-decisions section — and confirm the plan's own docs-update step
-     names `docs/spec.md` and `docs/architecture.md` (`AGENTS.md`; `CONTRIBUTING.md` §6
+     names `docs/spec.md` and `docs/architecture.md` (`AGENTS.md`; `CONTRIBUTING.md` §7
      "Docs"). Do not edit `docs/spec.md` or `docs/architecture.md` ahead of the code they
      describe. Edit them directly only when `SUBJECT` is one of them, and then tell the user
      that the code must follow in the same change.
